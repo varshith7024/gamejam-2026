@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Blocks commits that do not type-check. Skip once with: git commit --no-verify
+npm run --silent typecheck
