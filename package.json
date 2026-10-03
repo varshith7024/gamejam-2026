@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
-    "zip": "npm run build && cd dist && bestzip ../negative-space-web.zip *"
+    "zip": "npm run build && cd dist && bestzip ../negative-space-web.zip *",
+    "assets:level1": "python3 tools/process_level1_assets.py"
   },
   "dependencies": {
     "phaser": "^3.90.0"

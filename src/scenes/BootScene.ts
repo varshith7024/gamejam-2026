@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { resolveStartScene } from '../config/dev';
 
 export class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
@@ -6,5 +7,5 @@ export class BootScene extends Phaser.Scene {
     // Load assets from public/assets/, e.g.:
     // this.load.image('player', 'assets/player.png');
   }
-  create() { this.scene.start('Menu'); }
+  create() { this.scene.start(resolveStartScene()); }
 }

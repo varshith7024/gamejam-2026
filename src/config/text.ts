@@ -4,5 +4,8 @@ export const TEXT = {
   start: 'CLICK TO START',
   gameOver: 'THE LIGHT IS GONE',
   restart: 'PRESS R TO RESTART',
+  level1Title: 'THE VEIL',
+  level1Subtitle: 'Visual prototype',
+  level1Controls: 'WASD move   |   G collision debug',
   controls: 'WASD move   |   Mouse aim + hold click to shoot   |   SPACE dash',
 };

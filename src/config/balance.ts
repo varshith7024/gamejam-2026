@@ -16,6 +16,13 @@ export const BALANCE = {
   dashDuration: 0.15,
   dashCooldown: 0.8,
 
+  // Level 1 prototype (temporary test player + camera)
+  level1PlayerSpeed: 250,     // px/s in world space (a body is ~72px tall)
+  level1FootRadiusX: 14,      // walkable-area footprint of the player (ellipse, 3/4 view = squashed)
+  level1FootRadiusY: 7,
+  level1CameraFollow: 0.2,    // 0 = fixed camera, 1 = fully centred on the player (keep low: preserves composition)
+  level1CameraSmoothing: 5,   // higher = snappier camera
+
   // Girl (in the centre)
   girlRadius: 30,
 
