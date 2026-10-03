@@ -23,7 +23,9 @@ export class Level1Scene extends Phaser.Scene {
 
   preload() {
     const { width, height } = this.scale;
-    this.add.text(width / 2, height / 2, 'LOADING...', { fontSize: '20px', color: '#777' }).setOrigin(0.5);
+    this.add
+      .text(width / 2, height / 2, 'LOADING...', { fontSize: '20px', color: '#777' })
+      .setOrigin(0.5);
     Level1Environment.preload(this);
     Atmosphere.preload(this);
   }
@@ -49,7 +51,10 @@ export class Level1Scene extends Phaser.Scene {
   update(_time: number, deltaMs: number) {
     const dt = Math.min(deltaMs / 1000, 0.05); // clamp so a tab-switch can't teleport the player
     const k = this.keys;
-    this.input_.set((k.D.isDown ? 1 : 0) - (k.A.isDown ? 1 : 0), (k.S.isDown ? 1 : 0) - (k.W.isDown ? 1 : 0));
+    this.input_.set(
+      (k.D.isDown ? 1 : 0) - (k.A.isDown ? 1 : 0),
+      (k.S.isDown ? 1 : 0) - (k.W.isDown ? 1 : 0),
+    );
     this.player.step(dt, this.input_, this.env.area);
 
     if (Phaser.Input.Keyboard.JustDown(k.G)) {
@@ -60,12 +65,13 @@ export class Level1Scene extends Phaser.Scene {
   }
 
   // ---------- Camera ----------
-  // Fixed orientation, never rotates. The arena nearly fits the screen, so the camera only drifts a little toward
-  // the player (level1CameraFollow) around the arena centre, preserving the master image's composition.
+  // Smoothly tracks the player within the world bounds at the configured zoom level.
+  // Zooming in makes the ruins feel grander and reveals the world through camera panning.
   private setupCamera() {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, LEVEL1.world.width, LEVEL1.world.height);
     cam.setRoundPixels(true);
+    cam.setZoom(BALANCE.level1CameraZoom);
     const t = this.cameraTarget();
     cam.setScroll(t.x, t.y);
   }
@@ -76,8 +82,8 @@ export class Level1Scene extends Phaser.Scene {
     const cx = LEVEL1.floorCenter.x + (this.player.x - LEVEL1.floorCenter.x) * f;
     const cy = LEVEL1.floorCenter.y + (this.player.y - LEVEL1.floorCenter.y) * f;
     return {
-      x: Phaser.Math.Clamp(cx - cam.width / 2, 0, LEVEL1.world.width - cam.width),
-      y: Phaser.Math.Clamp(cy - cam.height / 2, 0, LEVEL1.world.height - cam.height),
+      x: cam.clampX(cx - cam.width / 2),
+      y: cam.clampY(cy - cam.height / 2),
     };
   }
 
@@ -91,25 +97,51 @@ export class Level1Scene extends Phaser.Scene {
   // ---------- UI ----------
   private showTitleCard() {
     const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamY = (screenY: number) => height / 2 + (screenY - height / 2) / z;
+
     const title = this.add
-      .text(width / 2, height * 0.42, TEXT.level1Title, { fontFamily: 'Georgia, serif', fontSize: '72px', color: '#ece8f4' })
+      .text(width / 2, toCamY(height * 0.42), TEXT.level1Title, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '72px',
+        color: '#ece8f4',
+      })
       .setOrigin(0.5)
+      .setScale(1 / z)
       .setLetterSpacing(14)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 1)
       .setAlpha(0);
     const sub = this.add
-      .text(width / 2, height * 0.42 + 56, TEXT.level1Subtitle, { fontFamily: 'Georgia, serif', fontSize: '22px', color: '#9a96b0' })
+      .text(width / 2, toCamY(height * 0.42 + 56), TEXT.level1Subtitle, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '22px',
+        color: '#9a96b0',
+      })
       .setOrigin(0.5)
+      .setScale(1 / z)
       .setLetterSpacing(6)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 1)
       .setAlpha(0);
-    this.tweens.add({ targets: [title, sub], alpha: 1, duration: 900, hold: 1800, yoyo: true, onComplete: () => [title, sub].forEach((t) => t.destroy()) });
+    this.tweens.add({
+      targets: [title, sub],
+      alpha: 1,
+      duration: 900,
+      hold: 1800,
+      yoyo: true,
+      onComplete: () => [title, sub].forEach((t) => t.destroy()),
+    });
 
     this.add
-      .text(width / 2, height - 22, TEXT.level1Controls, { fontSize: '15px', color: '#e4e0f2', stroke: '#000000', strokeThickness: 4 })
+      .text(width / 2, toCamY(height - 22), TEXT.level1Controls, {
+        fontSize: '15px',
+        color: '#e4e0f2',
+        stroke: '#000000',
+        strokeThickness: 4,
+      })
       .setOrigin(0.5)
+      .setScale(1 / z)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 1)
       .setAlpha(0.7);

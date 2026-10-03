@@ -30,7 +30,9 @@ export class Level1Environment {
     const blockers: (readonly Pt[])[] = [
       ...LEVEL1.blockers,
       ...LEVEL1.ellipseBlockers.map(([cx, cy, rx, ry]) => ellipsePolygon(cx, cy, rx, ry)),
-      ...LEVEL1.props.filter((p) => p.footprint).map((p) => ellipsePolygon(p.x, p.y, p.footprint![0], p.footprint![1])),
+      ...LEVEL1.props
+        .filter((p) => p.footprint)
+        .map((p) => ellipsePolygon(p.x, p.y, p.footprint![0], p.footprint![1])),
     ];
     this.area = new WalkableArea(LEVEL1.walkable, blockers);
     this.build();
@@ -40,22 +42,33 @@ export class Level1Environment {
   static preload(scene: Phaser.Scene) {
     scene.load.setPath(BASE);
     scene.load.image(MASTER_KEY, 'veil_master.png');
-    for (const key of new Set(LEVEL1.props.map((p) => p.key))) scene.load.image(`prop_${key}`, `props/prop_${key}.png`);
+    for (const key of new Set(LEVEL1.props.map((p) => p.key)))
+      scene.load.image(`prop_${key}`, `props/prop_${key}.png`);
     scene.load.json(OCCLUDER_MANIFEST_KEY, 'occluders.json');
-    scene.load.once(`filecomplete-json-${OCCLUDER_MANIFEST_KEY}`, (_k: string, _t: string, list: OccluderEntry[]) => {
-      // The loader path is global state (Atmosphere.preload changes it), so set it again before queueing.
-      scene.load.setPath(BASE);
-      for (const o of list) scene.load.image(o.key, o.file);
-    });
+    scene.load.once(
+      `filecomplete-json-${OCCLUDER_MANIFEST_KEY}`,
+      (_k: string, _t: string, list: OccluderEntry[]) => {
+        // The loader path is global state (Atmosphere.preload changes it), so set it again before queueing.
+        scene.load.setPath(BASE);
+        for (const o of list) scene.load.image(o.key, o.file);
+      },
+    );
   }
 
   private build() {
     const { width, height } = LEVEL1.world;
-    this.scene.add.image(0, 0, MASTER_KEY).setOrigin(0, 0).setDepth(DEPTH.base).setDisplaySize(width, height);
+    this.scene.add
+      .image(0, 0, MASTER_KEY)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.base)
+      .setDisplaySize(width, height);
 
     // Props: origin sits on the ground-contact point, depth = ground Y so the player sorts in front/behind.
     for (const p of LEVEL1.props) {
-      const img = this.scene.add.image(p.x, p.y, `prop_${p.key}`).setOrigin(0.5, 0.86).setScale(p.scale);
+      const img = this.scene.add
+        .image(p.x, p.y, `prop_${p.key}`)
+        .setOrigin(0.5, 0.86)
+        .setScale(p.scale);
       img.setDepth(p.flat ? DEPTH.groundDecal : p.y);
       if (!p.flat) this.sortLines.push({ x0: p.x - 30, x1: p.x + 30, y: p.y });
     }
@@ -63,8 +76,15 @@ export class Level1Environment {
     // Occluders: pieces of the master drawn again ABOVE the player while the player is behind them.
     const list = this.scene.cache.json.get(OCCLUDER_MANIFEST_KEY) as OccluderEntry[];
     for (const o of list) {
-      this.scene.add.image(o.x, o.y, o.key).setOrigin(0, 0).setDepth(o.sortY + 0.5);
-      this.sortLines.push({ x0: o.x, x1: o.x + this.scene.textures.get(o.key).getSourceImage().width, y: o.sortY });
+      this.scene.add
+        .image(o.x, o.y, o.key)
+        .setOrigin(0, 0)
+        .setDepth(o.sortY + 0.5);
+      this.sortLines.push({
+        x0: o.x,
+        x1: o.x + this.scene.textures.get(o.key).getSourceImage().width,
+        y: o.sortY,
+      });
     }
   }
 

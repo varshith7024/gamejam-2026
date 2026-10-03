@@ -46,20 +46,38 @@ export class GameScene extends Phaser.Scene {
     this.overlay = this.add.rectangle(0, 0, width, height, 0xffffff).setOrigin(0).setDepth(-10);
 
     // The girl: a white shape. Grey outline so she is still visible on a white screen.
-    this.girl = this.add.circle(width / 2, height / 2, BALANCE.girlRadius, 0xffffff).setStrokeStyle(3, 0x777777);
+    this.girl = this.add
+      .circle(width / 2, height / 2, BALANCE.girlRadius, 0xffffff)
+      .setStrokeStyle(3, 0x777777);
 
     // The player: the only coloured thing (neon outline).
-    this.player = this.add.circle(width / 2 + 90, height / 2, BALANCE.playerRadius, 0x000000).setStrokeStyle(4, 0x00ffcc);
+    this.player = this.add
+      .circle(width / 2 + 90, height / 2, BALANCE.playerRadius, 0x000000)
+      .setStrokeStyle(4, 0x00ffcc);
 
-    this.hud = this.add.text(16, 12, '', { fontSize: '20px', color: '#ff00ff', fontStyle: 'bold' }).setDepth(10);
-    this.add.text(width / 2, height - 18, TEXT.controls, { fontSize: '16px', color: '#ff00ff' }).setOrigin(0.5).setDepth(10);
+    this.hud = this.add
+      .text(16, 12, '', { fontSize: '20px', color: '#ff00ff', fontStyle: 'bold' })
+      .setDepth(10);
+    this.add
+      .text(width / 2, height - 18, TEXT.controls, { fontSize: '16px', color: '#ff00ff' })
+      .setOrigin(0.5)
+      .setDepth(10);
 
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,SPACE,R') as Keys;
 
     this.light.on('dead', () => {
       this.dead = true;
-      this.add.text(width / 2, height / 2 - 20, TEXT.gameOver, { fontSize: '56px', color: '#ffffff' }).setOrigin(0.5).setDepth(20);
-      this.add.text(width / 2, height / 2 + 40, 'SCORE ' + this.combo.score + '   ' + TEXT.restart, { fontSize: '24px', color: '#aaaaaa' }).setOrigin(0.5).setDepth(20);
+      this.add
+        .text(width / 2, height / 2 - 20, TEXT.gameOver, { fontSize: '56px', color: '#ffffff' })
+        .setOrigin(0.5)
+        .setDepth(20);
+      this.add
+        .text(width / 2, height / 2 + 40, 'SCORE ' + this.combo.score + '   ' + TEXT.restart, {
+          fontSize: '24px',
+          color: '#aaaaaa',
+        })
+        .setOrigin(0.5)
+        .setDepth(20);
     });
   }
 
@@ -105,7 +123,10 @@ export class GameScene extends Phaser.Scene {
       this.player.y += this.dashDir.y * BALANCE.dashSpeed * dt;
       // Dash-through kills
       for (const e of [...this.enemies]) {
-        if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) < e.radius + this.player.radius + 6) {
+        if (
+          Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) <
+          e.radius + this.player.radius + 6
+        ) {
           this.killEnemy(e);
         }
       }
@@ -133,7 +154,10 @@ export class GameScene extends Phaser.Scene {
   private handleSpawning(dt: number) {
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
-    const interval = Math.max(BALANCE.spawnMinInterval, BALANCE.spawnStartInterval - this.elapsed * BALANCE.spawnRamp);
+    const interval = Math.max(
+      BALANCE.spawnMinInterval,
+      BALANCE.spawnStartInterval - this.elapsed * BALANCE.spawnRamp,
+    );
     this.spawnTimer = interval;
 
     const { width, height } = this.scale;
@@ -163,15 +187,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateEnemies(dt: number) {
-    const speed = Math.min(BALANCE.enemyMaxSpeed, BALANCE.enemyBaseSpeed + this.elapsed * BALANCE.enemySpeedGrowth);
+    const speed = Math.min(
+      BALANCE.enemyMaxSpeed,
+      BALANCE.enemyBaseSpeed + this.elapsed * BALANCE.enemySpeedGrowth,
+    );
     for (const e of [...this.enemies]) {
       e.crawlToward(this.girl.x, this.girl.y, speed, dt);
 
-      if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) < e.radius + this.player.radius) {
+      if (
+        Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) <
+        e.radius + this.player.radius
+      ) {
         this.light.add(-BALANCE.playerHitPenalty);
         this.combo.resetStreak();
         this.removeEnemy(e);
-      } else if (Phaser.Math.Distance.Between(e.x, e.y, this.girl.x, this.girl.y) < e.radius + this.girl.radius) {
+      } else if (
+        Phaser.Math.Distance.Between(e.x, e.y, this.girl.x, this.girl.y) <
+        e.radius + this.girl.radius
+      ) {
         this.light.add(-BALANCE.girlHitPenalty);
         this.removeEnemy(e);
       }
@@ -188,7 +221,13 @@ export class GameScene extends Phaser.Scene {
   // ---------- Helpers ----------
   private burst(x: number, y: number) {
     const ring = this.add.circle(x, y, 10, 0xffffff).setStrokeStyle(2, 0x000000);
-    this.tweens.add({ targets: ring, scale: 5, alpha: 0, duration: 300, onComplete: () => ring.destroy() });
+    this.tweens.add({
+      targets: ring,
+      scale: 5,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => ring.destroy(),
+    });
   }
 
   private removeEnemy(e: Enemy) {
@@ -203,9 +242,14 @@ export class GameScene extends Phaser.Scene {
 
   private updateHud() {
     this.hud.setText(
-      'LIGHT ' + Math.round(this.light.value * 100) + '%\n' +
-      'SCORE ' + this.combo.score + '\n' +
-      'MULTIPLIER x' + (1 + (1 - this.light.value) * (BALANCE.maxRiskMultiplier - 1)).toFixed(1),
+      'LIGHT ' +
+        Math.round(this.light.value * 100) +
+        '%\n' +
+        'SCORE ' +
+        this.combo.score +
+        '\n' +
+        'MULTIPLIER x' +
+        (1 + (1 - this.light.value) * (BALANCE.maxRiskMultiplier - 1)).toFixed(1),
     );
   }
 }

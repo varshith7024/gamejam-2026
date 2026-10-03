@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { BALANCE } from '../config/balance';
 import { DEPTH } from '../environment/Level1Environment';
 import { LEVEL1 } from '../environment/level1Data';
 
@@ -15,7 +16,8 @@ export class Atmosphere {
 
   static preload(scene: Phaser.Scene) {
     scene.load.setPath(BASE);
-    for (const k of [...FOG, 'motes', 'spirits', 'dust']) scene.load.image(`atmos_${k}`, `atmos_${k}.png`);
+    for (const k of [...FOG, 'motes', 'spirits', 'dust'])
+      scene.load.image(`atmos_${k}`, `atmos_${k}.png`);
   }
 
   create() {
@@ -62,9 +64,29 @@ export class Atmosphere {
       ['fog_cloud', 1000, 430, 1.3, 0.09, -140, 40000],
     ] as const;
     banks.forEach(([key, x, y, scale, alpha, drift, period], i) => {
-      const s = this.scene.add.image(x, y, `atmos_${key}`).setScale(scale).setAlpha(alpha).setDepth(DEPTH.atmosphere);
-      this.scene.tweens.add({ targets: s, x: x + drift, duration: period, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: i * 900 });
-      this.scene.tweens.add({ targets: s, alpha: alpha * 0.6, duration: period * 0.55, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: i * 400 });
+      const s = this.scene.add
+        .image(x, y, `atmos_${key}`)
+        .setScale(scale)
+        .setAlpha(alpha)
+        .setDepth(DEPTH.atmosphere);
+      this.scene.tweens.add({
+        targets: s,
+        x: x + drift,
+        duration: period,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+        delay: i * 900,
+      });
+      this.scene.tweens.add({
+        targets: s,
+        alpha: alpha * 0.6,
+        duration: period * 0.55,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+        delay: i * 400,
+      });
     });
   }
 
@@ -75,23 +97,53 @@ export class Atmosphere {
       [1120, 560, 1.0],
     ] as const;
     motes.forEach(([x, y, sc], i) => {
-      const s = this.scene.add.image(x, y, 'atmos_motes').setScale(sc).setAlpha(0.32).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.atmosphere);
-      this.scene.tweens.add({ targets: s, y: y - 40, x: x + 30, alpha: 0.12, duration: 7000 + i * 1800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const s = this.scene.add
+        .image(x, y, 'atmos_motes')
+        .setScale(sc)
+        .setAlpha(0.32)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(DEPTH.atmosphere);
+      this.scene.tweens.add({
+        targets: s,
+        y: y - 40,
+        x: x + 30,
+        alpha: 0.12,
+        duration: 7000 + i * 1800,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
     });
     const spirits = [
       [330, 620],
       [1260, 480],
     ] as const;
     spirits.forEach(([x, y], i) => {
-      const s = this.scene.add.image(x, y, 'atmos_spirits').setScale(1.2).setAlpha(0.45).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.atmosphere);
-      this.scene.tweens.add({ targets: s, y: y - 60, alpha: 0.15, duration: 9000 + i * 2500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const s = this.scene.add
+        .image(x, y, 'atmos_spirits')
+        .setScale(1.2)
+        .setAlpha(0.45)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(DEPTH.atmosphere);
+      this.scene.tweens.add({
+        targets: s,
+        y: y - 60,
+        alpha: 0.15,
+        duration: 9000 + i * 2500,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
     });
   }
 
   private createEmitters() {
     const { width, height } = LEVEL1.world;
     // helper: fade in and out over a particle's life
-    const lifeFade = (peak: number) => ({ onEmit: () => 0, onUpdate: (_p: unknown, _k: string, t: number) => Math.sin(Math.PI * t) * peak });
+    const lifeFade = (peak: number) => ({
+      onEmit: () => 0,
+      onUpdate: (_p: unknown, _k: string, t: number) => Math.sin(Math.PI * t) * peak,
+    });
 
     // Floating dust / ash motes (pale)
     this.scene.add
@@ -151,13 +203,26 @@ export class Atmosphere {
     if (!this.scene.textures.exists(key)) {
       const c = this.scene.textures.createCanvas(key, width, height)!;
       const ctx = c.getContext();
-      const g = ctx.createRadialGradient(width / 2, height / 2, height * 0.35, width / 2, height / 2, width * 0.62);
+      const g = ctx.createRadialGradient(
+        width / 2,
+        height / 2,
+        height * 0.35,
+        width / 2,
+        height / 2,
+        width * 0.62,
+      );
       g.addColorStop(0, 'rgba(0,0,0,0)');
       g.addColorStop(1, 'rgba(0,0,0,0.62)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, width, height);
       c.refresh();
     }
-    this.scene.add.image(0, 0, key).setOrigin(0).setScrollFactor(0).setDepth(DEPTH.screen);
+    const z = BALANCE.level1CameraZoom ?? 1;
+    this.scene.add
+      .image(width / 2, height / 2, key)
+      .setOrigin(0.5)
+      .setScale(1 / z)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen);
   }
 }

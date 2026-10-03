@@ -38,7 +38,14 @@ export class TestPlayer extends Phaser.GameObjects.Container {
       const dir = input.clone().normalize();
       const speed = BALANCE.level1PlayerSpeed;
       // 3/4 view: vertical screen movement covers less ground distance, so scale it slightly like the floor does.
-      const p = area.move(this.x, this.y, dir.x * speed * dt, dir.y * speed * dt * 0.85, BALANCE.level1FootRadiusX, BALANCE.level1FootRadiusY);
+      const p = area.move(
+        this.x,
+        this.y,
+        dir.x * speed * dt,
+        dir.y * speed * dt * 0.85,
+        BALANCE.level1FootRadiusX,
+        BALANCE.level1FootRadiusY,
+      );
       this.setPosition(p.x, p.y);
       this.facing.lerp(dir, Math.min(1, dt * 14)).normalize();
     }
@@ -65,7 +72,9 @@ export class TestPlayer extends Phaser.GameObjects.Container {
     const g = this.body_;
     g.clear();
     const f = this.facing;
-    const bob = Math.abs(Math.sin(this.walkPhase)) * 3 * this.moveBlend + Math.sin(this.time_ * 2.2) * 0.8 * (1 - this.moveBlend);
+    const bob =
+      Math.abs(Math.sin(this.walkPhase)) * 3 * this.moveBlend +
+      Math.sin(this.time_ * 2.2) * 0.8 * (1 - this.moveBlend);
     const lean = f.x * 2.5 * this.moveBlend;
     const away = f.y < -0.35; // facing away from camera
 
@@ -113,17 +122,27 @@ export class TestPlayer extends Phaser.GameObjects.Container {
     g.lineStyle(1.5, RIM, 0.9).lineBetween(-9 + lean, top, -15, -8);
 
     // Glowing sash / accent
-    g.lineStyle(3, GLOW, 0.9).lineBetween(-11 + lean * 0.6, -31 - bob * 0.6, 11 + lean * 0.6, -26 - bob * 0.6);
+    g.lineStyle(3, GLOW, 0.9).lineBetween(
+      -11 + lean * 0.6,
+      -31 - bob * 0.6,
+      11 + lean * 0.6,
+      -26 - bob * 0.6,
+    );
 
     // Head / hood
     const hy = -54 - bob;
     g.fillStyle(CLOAK, 1).fillCircle(lean, hy, 9);
-    g.lineStyle(1.5, RIM, 0.9).beginPath().arc(lean, hy, 9, Math.PI * 0.55, Math.PI * 1.15, false).strokePath();
+    g.lineStyle(1.5, RIM, 0.9)
+      .beginPath()
+      .arc(lean, hy, 9, Math.PI * 0.55, Math.PI * 1.15, false)
+      .strokePath();
     if (!away) {
       // face void + glowing eyes shifted toward the facing direction
       const ex = lean + f.x * 4;
       g.fillStyle(0x000000, 1).fillEllipse(ex, hy + 1 + f.y * 1.5, 11, 9);
-      g.fillStyle(GLOW, 1).fillCircle(ex - 2.2, hy + 1 + f.y * 1.5, 1.5).fillCircle(ex + 2.2, hy + 1 + f.y * 1.5, 1.5);
+      g.fillStyle(GLOW, 1)
+        .fillCircle(ex - 2.2, hy + 1 + f.y * 1.5, 1.5)
+        .fillCircle(ex + 2.2, hy + 1 + f.y * 1.5, 1.5);
     }
 
     if (!away) drawBlade();
