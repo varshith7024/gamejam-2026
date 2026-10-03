@@ -20,6 +20,8 @@ export interface ChampionConfig {
   walkSpeed: number;
   locomotionAnim: string;
   actionAnims: string[];
+  deathAnim: string;
+  maxHp: number;
   animations: ChampionAnimDef[];
 }
 
@@ -32,6 +34,8 @@ export const YI_CONFIG: ChampionConfig = {
   walkSpeed: 142, // 50% faster
   locomotionAnim: 'run',
   actionAnims: ['attack_1', 'idle', 'get_hit'],
+  deathAnim: 'death',
+  maxHp: 2,
   animations: [
     {
       key: 'idle',
@@ -95,6 +99,8 @@ export const ZED_CONFIG: ChampionConfig = {
   walkSpeed: 42, // 50% slower (85 * 0.5)
   locomotionAnim: 'walk',
   actionAnims: ['attack', 'idle', 'get_hit'],
+  deathAnim: 'die',
+  maxHp: 4,
   animations: [
     {
       key: 'idle',
@@ -123,7 +129,7 @@ export const ZED_CONFIG: ChampionConfig = {
       frameHeight: 220,
       frames: 10,
       directions: 8,
-      fps: 14,
+      fps: 10, // 10 frames at 10 fps = exactly 1s attack time
       repeat: 0,
     },
     {

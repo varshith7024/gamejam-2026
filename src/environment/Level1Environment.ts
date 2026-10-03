@@ -25,6 +25,8 @@ export class Level1Environment {
   readonly area: WalkableArea;
   private debugGfx?: Phaser.GameObjects.Graphics;
   private sortLines: { x0: number; x1: number; y: number }[] = [];
+  private propOverlays: Phaser.GameObjects.Image[] = [];
+  private propDarkOverlays: Phaser.GameObjects.Image[] = [];
 
   constructor(private scene: Phaser.Scene) {
     const blockers: (readonly Pt[])[] = [
@@ -65,12 +67,34 @@ export class Level1Environment {
 
     // Props: origin sits on the ground-contact point, depth = ground Y so the player sorts in front/behind.
     for (const p of LEVEL1.props) {
+      const depth = p.flat ? DEPTH.groundDecal : p.y;
       const img = this.scene.add
         .image(p.x, p.y, `prop_${p.key}`)
         .setOrigin(0.5, 0.86)
         .setScale(p.scale);
-      img.setDepth(p.flat ? DEPTH.groundDecal : p.y);
+      img.setDepth(depth);
       if (!p.flat) this.sortLines.push({ x0: p.x - 30, x1: p.x + 30, y: p.y });
+
+      // Prop blackpoint screen overlay: white silhouette screened over the prop (brightening)
+      const overlay = this.scene.add
+        .image(p.x, p.y, `prop_${p.key}`)
+        .setOrigin(0.5, 0.86)
+        .setScale(p.scale)
+        .setDepth(depth + 0.05)
+        .setBlendMode(Phaser.BlendModes.SCREEN)
+        .setTintFill(0xffffff)
+        .setAlpha(0);
+      this.propOverlays.push(overlay);
+
+      // Prop whitepoint dark overlay: black silhouette over the prop (darkening)
+      const darkOverlay = this.scene.add
+        .image(p.x, p.y, `prop_${p.key}`)
+        .setOrigin(0.5, 0.86)
+        .setScale(p.scale)
+        .setDepth(depth + 0.06)
+        .setTintFill(0x000000)
+        .setAlpha(0);
+      this.propDarkOverlays.push(darkOverlay);
     }
 
     // Occluders: pieces of the master drawn again ABOVE the player while the player is behind them.
@@ -85,6 +109,45 @@ export class Level1Environment {
         x1: o.x + this.scene.textures.get(o.key).getSourceImage().width,
         y: o.sortY,
       });
+
+      // Occluder blackpoint screen overlay
+      const occOverlay = this.scene.add
+        .image(o.x, o.y, o.key)
+        .setOrigin(0, 0)
+        .setDepth(o.sortY + 0.55)
+        .setBlendMode(Phaser.BlendModes.SCREEN)
+        .setTintFill(0xffffff)
+        .setAlpha(0);
+      this.propOverlays.push(occOverlay);
+
+      // Occluder whitepoint dark overlay
+      const occDarkOverlay = this.scene.add
+        .image(o.x, o.y, o.key)
+        .setOrigin(0, 0)
+        .setDepth(o.sortY + 0.56)
+        .setTintFill(0x000000)
+        .setAlpha(0);
+      this.propDarkOverlays.push(occDarkOverlay);
+    }
+  }
+
+  /** Update the black point lift / white point drop across all level props and occluders */
+  setBlackPoint(value: number) {
+    if (value >= 0) {
+      for (let i = 0; i < this.propOverlays.length; i++) {
+        this.propOverlays[i].setAlpha(value);
+      }
+      for (let i = 0; i < this.propDarkOverlays.length; i++) {
+        this.propDarkOverlays[i].setAlpha(0);
+      }
+    } else {
+      const darkness = Math.abs(value);
+      for (let i = 0; i < this.propOverlays.length; i++) {
+        this.propOverlays[i].setAlpha(0);
+      }
+      for (let i = 0; i < this.propDarkOverlays.length; i++) {
+        this.propDarkOverlays[i].setAlpha(darkness);
+      }
     }
   }
 

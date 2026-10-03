@@ -12,6 +12,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   public championType: ChampionType;
   private config: ChampionConfig;
 
+  // Health and combat state
+  public maxHp: number;
+  public currentHp: number;
+  public isDead = false;
+  public isDying = false;
+  public isStumbling = false;
+  private stumbleTimer = 0;
+
   // AI & Movement State
   private isMoving = true;
   private isActing = false;
@@ -20,8 +28,11 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private currentDir = 4; // Starts facing South
   private currentAnimKey = '';
 
+  // Attack stats per champion type
+  public attackDamage = 1;
+  public attackCooldownDuration = 1.0;
+  public attackCooldown = 0;
   private walkSpeed = 80;
-  private attackCooldown = 0;
   private hasEnteredArena = false;
 
   // Crowd separation
@@ -37,7 +48,12 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     this.championType = type;
     this.config = config;
+    this.maxHp = config.maxHp;
+    this.currentHp = this.maxHp;
     this.attackRange = type === 'Zed' ? 68 : 50;
+    this.attackDamage = type === 'Zed' ? 5 : 1;
+    this.attackCooldownDuration = type === 'Zed' ? 0.75 : 1.0;
+    this.attackCooldown = this.attackCooldownDuration;
 
     this.walkSpeed = Phaser.Math.FloatBetween(
       config.walkSpeed - 5,
@@ -60,8 +76,16 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     this.attackCooldown = Phaser.Math.FloatBetween(0.5, 2.0);
 
-    // When an attack/action animation finishes, resume locomotion
-    this.on(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+    // Animation completion handling
+    this.on(Phaser.Animations.Events.ANIMATION_COMPLETE, (anim: Phaser.Animations.Animation) => {
+      if (this.isDead) return;
+      if (this.isStumbling) {
+        // While stumbling, if get_hit finished, transition to idle stagger
+        if (anim.key.includes('get_hit')) {
+          this.playChampionAnim('idle', this.currentDir);
+        }
+        return;
+      }
       if (this.isActing) {
         this.isActing = false;
         this.startChasing();
@@ -71,12 +95,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
   // Calculate repulsion vector from nearby enemies so horde naturally fans out
   public computeSeparation(otherEnemies: Enemy[]) {
+    if (this.isDead) return;
+
     this.separationX = 0;
     this.separationY = 0;
     const minDist = this.championType === 'Zed' ? 52 : 36;
 
     for (const other of otherEnemies) {
-      if (other === this) continue;
+      if (other === this || other.isDead) continue;
       const dx = this.x - other.x;
       const dy = this.y - other.y;
       const dist = Math.hypot(dx, dy);
@@ -90,6 +116,20 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   public update(dt: number, playerX?: number, playerY?: number, area?: WalkableArea) {
+    if (this.isDead) return;
+
+    // Handle stumble timer after being hit
+    if (this.isStumbling) {
+      this.stumbleTimer -= dt;
+      this.setDepth(this.y);
+      if (this.stumbleTimer <= 0) {
+        this.isStumbling = false;
+        this.isActing = false;
+        this.startChasing();
+      }
+      return;
+    }
+
     if (this.attackCooldown > 0) {
       this.attackCooldown -= dt;
     }
@@ -100,7 +140,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       const distToPlayer = Math.hypot(dx, dy);
 
       if (this.isActing) {
-        // Stationary while executing an attack / hit reaction
+        // Stationary while executing an attack
         this.isMoving = false;
       } else if (distToPlayer <= this.attackRange && this.attackCooldown <= 0) {
         // Close enough: stop and execute an attack
@@ -168,6 +208,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private startChasing() {
     this.isMoving = true;
     this.isActing = false;
+    this.isStumbling = false;
     this.currentAnimKey = this.config.locomotionAnim;
     this.playChampionAnim(this.config.locomotionAnim, this.currentDir);
   }
@@ -175,7 +216,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private triggerAttack(playerX: number, playerY: number) {
     this.isMoving = false;
     this.isActing = true;
-    this.attackCooldown = Phaser.Math.FloatBetween(1.2, 2.2);
+    this.attackCooldown = this.attackCooldownDuration;
 
     // Randomly pick one of their action animations
     const action = Phaser.Utils.Array.GetRandom(this.config.actionAnims);
@@ -185,28 +226,47 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.currentDir = this.computeDirection(playerX - this.x, playerY - this.y);
     this.playChampionAnim(action, this.currentDir);
 
-    // Safety timeout in case an animation takes longer than expected
-    this.scene.time.delayedCall(1500, () => {
-      if (this.isActing && this.currentAnimKey !== 'get_hit') {
+    // Attack execution timeout matching 1s attack time for Zed
+    this.scene.time.delayedCall(this.championType === 'Zed' ? 1050 : 850, () => {
+      if (this.isActing && !this.isStumbling && !this.isDead) {
         this.isActing = false;
         this.startChasing();
       }
     });
   }
 
-  public takeDamage(fromX: number, fromY: number, area?: WalkableArea) {
+  public resetAttackCooldown() {
+    this.attackCooldown = this.attackCooldownDuration;
+  }
+
+  public takeDamage(fromX: number, fromY: number, area?: WalkableArea, damage = 1): boolean {
+    if (this.isDead) return false;
+
+    this.currentHp -= damage;
+
+    if (this.currentHp <= 0) {
+      this.die(fromX, fromY);
+      return true; // Monster killed
+    }
+
+    this.stumble(fromX, fromY, area);
+    return false; // Monster survived and stumbled
+  }
+
+  private stumble(fromX: number, fromY: number, area?: WalkableArea) {
     this.isMoving = false;
-    this.isActing = true;
-    this.currentAnimKey = 'get_hit';
-    this.attackCooldown = Phaser.Math.FloatBetween(0.8, 1.4);
+    // Zed stumble duration reset to 0.5s, Yi stumble duration is 0.75s
+    this.stumbleTimer = this.championType === 'Zed' ? 0.5 : 0.75;
+    this.attackCooldown = this.attackCooldownDuration;
 
     // Face the attacker
     this.currentDir = this.computeDirection(fromX - this.x, fromY - this.y);
+    this.currentAnimKey = 'get_hit';
     this.playChampionAnim('get_hit', this.currentDir);
 
-    // Knockback away from player
+    // Knockback recoil away from player
     const rad = Math.atan2(this.y - fromY, this.x - fromX);
-    const knockbackDist = 24;
+    const knockbackDist = 26;
     const kx = Math.cos(rad) * knockbackDist;
     const ky = Math.sin(rad) * knockbackDist * 0.85;
     const rx = this.championType === 'Zed' ? 16 : 10;
@@ -221,17 +281,54 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.y += ky;
     }
 
-    // Safety timeout to resume chasing after taking damage
-    this.scene.time.delayedCall(700, () => {
-      if (this.currentAnimKey === 'get_hit') {
-        this.isActing = false;
-        this.startChasing();
-      }
+    // White hit flash
+    this.setTintFill(0xffffff);
+    this.scene.time.delayedCall(90, () => {
+      if (!this.isDead) this.clearTint();
+    });
+  }
+
+  public die(fromX: number, fromY: number) {
+    this.isDead = true;
+    this.isDying = true;
+    this.isMoving = false;
+    this.isActing = false;
+    this.isStumbling = false;
+
+    // Face the attacker on final blow
+    this.currentDir = this.computeDirection(fromX - this.x, fromY - this.y);
+    this.currentAnimKey = this.config.deathAnim;
+    this.playChampionAnim(this.config.deathAnim, this.currentDir);
+
+    // Subtle final knockback
+    const rad = Math.atan2(this.y - fromY, this.x - fromX);
+    this.x += Math.cos(rad) * 14;
+    this.y += Math.sin(rad) * 14 * 0.85;
+
+    // White death flash
+    this.setTintFill(0xffffff);
+    this.scene.time.delayedCall(120, () => {
+      this.clearTint();
+    });
+
+    // When dying, play death animation, then slowly fade them out after 2 seconds
+    this.scene.time.delayedCall(2000, () => {
+      this.scene.tweens.add({
+        targets: this,
+        alpha: 0,
+        duration: 1500,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          this.destroy();
+        },
+      });
     });
   }
 
   public isPerformingAttack(): boolean {
     return (
+      !this.isDead &&
+      !this.isStumbling &&
       this.isActing &&
       (this.currentAnimKey === 'attack' || this.currentAnimKey === 'attack_1')
     );

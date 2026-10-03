@@ -2,7 +2,7 @@
 export const BALANCE = {
   // Light (the "health bar")
   startLight: 0.4, // 0 = pitch black, 1 = pure white
-  dimPerSecond: 0.02, // how fast the screen dims on its own
+  dimPerSecond: 0.1, // how fast the screen dims on its own
   killLightGain: 0.04, // light gained per kill
   playerHitPenalty: 0.1, // light lost when an enemy touches the player
   girlHitPenalty: 0.08, // light lost when an enemy reaches the girl

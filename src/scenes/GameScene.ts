@@ -4,6 +4,7 @@ import { Level1Environment, DEPTH } from '../environment/Level1Environment';
 import { Atmosphere } from '../effects/Atmosphere';
 import { LEVEL1 } from '../environment/level1Data';
 import { BALANCE } from '../config/balance';
+import { ChampionType } from '../config/championAnimations';
 import { TEXT } from '../config/text';
 
 type ActionState =
@@ -30,6 +31,33 @@ export class GameScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Sprite;
   private enemies: Enemy[] = [];
   private debugOn = false;
+
+  // Player Health Bar (Clean black bar with red inner bar, bottom-left)
+  public readonly maxHealth = 50;
+  public health = 50;
+  private healthContainer!: Phaser.GameObjects.Container;
+  private hpBgGfx!: Phaser.GameObjects.Graphics;
+  private hpFillGfx!: Phaser.GameObjects.Graphics;
+
+  // Brightening & Black Point / White Point Mechanic
+  public blackPoint = 0.0; // -0.50 to +0.50 (-50% to +50%)
+  private blackPointOverlay!: Phaser.GameObjects.Rectangle;
+  private whitePointDarkOverlay!: Phaser.GameObjects.Rectangle;
+
+  // Wave System & UI
+  public currentWave = 1;
+  private wavePhase = 0;
+  private waveGroupEnemies: Enemy[] = [];
+  private wavePendingSpawns = 0;
+  private waveTimerEvents: Phaser.Time.TimerEvent[] = [];
+  private cornerWaveText!: Phaser.GameObjects.Text;
+  private lightLevelText!: Phaser.GameObjects.Text;
+  private waveAnnounceTitle: Phaser.GameObjects.Text | null = null;
+  private waveAnnounceSub: Phaser.GameObjects.Text | null = null;
+
+  // White bloom glow layers (subtle but noticeable)
+  private playerGlowGround!: Phaser.GameObjects.Image;
+  private playerGlowCore!: Phaser.GameObjects.Image;
 
   // Directions: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE
   private currentAimDir = 0;
@@ -83,8 +111,12 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#000000');
     this.input.mouse?.disableContextMenu();
 
-    // Reset state in case of restart
+    // Reset combat and wave state
     this.enemies = [];
+    this.waveGroupEnemies = [];
+    this.waveTimerEvents = [];
+    this.health = this.maxHealth;
+    this.blackPoint = 0.0;
     this.isDead = false;
     this.enemyHitCooldown = 0;
     this.currentAction = 'idle';
@@ -95,6 +127,9 @@ export class GameScene extends Phaser.Scene {
     this.atmosphere = new Atmosphere(this);
     this.atmosphere.create();
 
+    // Setup Black Point overlay (modifies background only, depth = DEPTH.base + 0.1)
+    this.createBlackPointOverlay();
+
     // Create player sprite (origin at ground feet contact point)
     this.currentAimDir = 0; // Starts facing right (East)
     this.player = this.add.sprite(LEVEL1.playerStart.x, LEVEL1.playerStart.y, 'Idle', 0);
@@ -103,19 +138,545 @@ export class GameScene extends Phaser.Scene {
     this.player.setDepth(this.player.y);
     this.playDirectional('Idle', 0, false);
 
-    // Spawn 20 enemies around the edges of LEVEL1.world
-    this.spawnEdgeEnemies(20);
+    // Create subtle but noticeable white bloom glow effect
+    this.createPlayerBloom();
 
     this.setupInput();
     this.setupAnimationCallbacks();
     this.setupCamera();
+    this.setupHealthBar();
+    this.setupWaveUI();
     this.showTitleCard();
+
+    // Start Wave Progression
+    this.startWave(1);
 
     // Debug mode (?debug in URL)
     if (new URLSearchParams(window.location.search).has('debug')) {
       this.debugOn = true;
       this.env.setDebug(true);
       (window as unknown as Record<string, unknown>).__level1 = this;
+    }
+  }
+
+  // -----------------------------------------------------------------
+  // SUBTLE BUT NOTICEABLE WHITE BLOOM GLOW EFFECT
+  // -----------------------------------------------------------------
+  private createPlayerBloom() {
+    const key = 'player_bloom_halo_noticeable';
+    if (!this.textures.exists(key)) {
+      const canvas = this.textures.createCanvas(key, 256, 256)!;
+      const ctx = canvas.getContext();
+      const grad = ctx.createRadialGradient(128, 128, 6, 128, 128, 128);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.90)');
+      grad.addColorStop(0.2, 'rgba(255, 255, 255, 0.65)');
+      grad.addColorStop(0.45, 'rgba(235, 245, 255, 0.28)');
+      grad.addColorStop(0.75, 'rgba(215, 230, 255, 0.08)');
+      grad.addColorStop(1, 'rgba(200, 220, 255, 0.0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 256, 256);
+      canvas.refresh();
+    }
+
+    // 1. Noticeable isometric ground bloom halo
+    this.playerGlowGround = this.add
+      .image(this.player.x, this.player.y - 12, key)
+      .setOrigin(0.5, 0.5)
+      .setScale(0.95, 0.5)
+      .setAlpha(0.42)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(this.player.y - 1);
+
+    this.tweens.add({
+      targets: this.playerGlowGround,
+      scaleX: 1.08,
+      scaleY: 0.58,
+      alpha: 0.52,
+      duration: 1600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    // 2. Noticeable core bloom around torso and sword
+    this.playerGlowCore = this.add
+      .image(this.player.x, this.player.y - 38, key)
+      .setOrigin(0.5, 0.5)
+      .setScale(0.48)
+      .setAlpha(0.35)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(this.player.y + 0.1);
+
+    this.tweens.add({
+      targets: this.playerGlowCore,
+      scale: 0.56,
+      alpha: 0.44,
+      duration: 1300,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  private updatePlayerBloom() {
+    if (!this.playerGlowGround || !this.playerGlowCore) return;
+
+    if (this.isDead) {
+      this.playerGlowGround.setVisible(false);
+      this.playerGlowCore.setVisible(false);
+      return;
+    }
+
+    this.playerGlowGround.setVisible(true);
+    this.playerGlowCore.setVisible(true);
+    this.playerGlowGround.setPosition(this.player.x, this.player.y - 12);
+    this.playerGlowGround.setDepth(this.player.y - 1);
+    this.playerGlowCore.setPosition(this.player.x, this.player.y - 38);
+    this.playerGlowCore.setDepth(this.player.y + 0.1);
+  }
+
+  // -----------------------------------------------------------------
+  // BRIGHTENING & DARKENING MECHANIC (BLACK POINT & WHITE POINT)
+  // -----------------------------------------------------------------
+  private createBlackPointOverlay() {
+    // White screen overlay placed directly above veil_master image (DEPTH.base is -10000)
+    // Screen blend formula: Output = blackPoint + (1 - blackPoint) * Background
+    // Lifts the black point of the background when blackPoint > 0 (scene gets brighter)
+    this.blackPointOverlay = this.add
+      .rectangle(0, 0, LEVEL1.world.width, LEVEL1.world.height, 0xffffff)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.base + 0.1)
+      .setBlendMode(Phaser.BlendModes.SCREEN)
+      .setAlpha(0);
+
+    // Black normal overlay to lower the white point when blackPoint < 0 (scene gets darker)
+    // Formula: Output = (1 - darkness) * Background
+    this.whitePointDarkOverlay = this.add
+      .rectangle(0, 0, LEVEL1.world.width, LEVEL1.world.height, 0x000000)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.base + 0.2)
+      .setAlpha(0);
+  }
+
+  private isAnyEnemyOnScreen(): boolean {
+    const cam = this.cameras.main;
+    const wv = cam.worldView;
+    const margin = 40;
+    for (const enemy of this.enemies) {
+      if (!enemy.isDead) {
+        if (
+          enemy.x >= wv.x - margin &&
+          enemy.x <= wv.right + margin &&
+          enemy.y >= wv.y - margin &&
+          enemy.y <= wv.bottom + margin
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private applyBlackPoint() {
+    if (this.blackPoint >= 0) {
+      this.blackPointOverlay.setAlpha(this.blackPoint);
+      this.whitePointDarkOverlay.setAlpha(0);
+    } else {
+      this.blackPointOverlay.setAlpha(0);
+      this.whitePointDarkOverlay.setAlpha(Math.abs(this.blackPoint));
+    }
+    if (this.env) {
+      this.env.setBlackPoint(this.blackPoint);
+    }
+    if (this.lightLevelText) {
+      const pct = Math.round(this.blackPoint * 100);
+      const sign = pct > 0 ? '+' : '';
+      this.lightLevelText.setText(`LIGHT ${sign}${pct}%`);
+    }
+  }
+
+  private updateBlackPoint(dt: number) {
+    // Decrease black point by 1% (0.01) per second ONLY when enemies are on screen
+    // Can decrease below 0 (down to -50% / -0.50) to darken the whole scene by lowering the white point
+    if (this.isAnyEnemyOnScreen()) {
+      this.blackPoint = Math.max(-0.50, this.blackPoint - 0.01 * dt);
+    }
+    this.applyBlackPoint();
+  }
+
+  public getBlackPoint(): number {
+    return this.blackPoint;
+  }
+
+  // -----------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // PLAYER HEALTH BAR (BLACK BAR WITH RED INNER BAR, BOTTOM-LEFT)
+  // -----------------------------------------------------------------
+  private setupHealthBar() {
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
+    const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
+
+    // Anchor at bottom-left
+    this.healthContainer = this.add.container(toCamX(30), toCamY(height - 36));
+    this.healthContainer.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
+
+    // Outer black bar
+    this.hpBgGfx = this.add.graphics();
+
+    // Red inner bar
+    this.hpFillGfx = this.add.graphics();
+
+    this.healthContainer.add([this.hpBgGfx, this.hpFillGfx]);
+
+    this.drawHealthBar();
+  }
+
+  private drawHealthBar() {
+    const barW = 200;
+    const barH = 16;
+    const pad = 2;
+    const frac = Phaser.Math.Clamp(this.health / this.maxHealth, 0, 1);
+
+    // 1. Black outer bar
+    this.hpBgGfx.clear();
+    this.hpBgGfx.fillStyle(0x000000, 1);
+    this.hpBgGfx.fillRect(0, 0, barW, barH);
+    this.hpBgGfx.lineStyle(1, 0x1f1f1f, 1);
+    this.hpBgGfx.strokeRect(0, 0, barW, barH);
+
+    // 2. Red inner bar sized based on length
+    this.hpFillGfx.clear();
+    const maxInnerW = barW - pad * 2;
+    const innerW = Math.round(maxInnerW * frac);
+    const innerH = barH - pad * 2;
+    if (innerW > 0) {
+      this.hpFillGfx.fillStyle(0xd63031, 1);
+      this.hpFillGfx.fillRect(pad, pad, innerW, innerH);
+    }
+  }
+
+  public damagePlayer(amount: number) {
+    if (this.isDead) return;
+
+    this.health = Math.max(0, this.health - amount);
+    this.drawHealthBar();
+
+    if (this.health <= 0) {
+      this.die();
+    }
+  }
+
+  // -----------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // UI, TITLE CARD & WAVE PROGRESSION (STYLE OF "THE VEIL")
+  // -----------------------------------------------------------------
+  private showTitleCard() {
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamY = (screenY: number) => height / 2 + (screenY - height / 2) / z;
+
+    const title = this.add
+      .text(width / 2, toCamY(height * 0.42), TEXT.level1Title, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '72px',
+        color: '#ece8f4',
+      })
+      .setOrigin(0.5)
+      .setScale(1 / z)
+      .setLetterSpacing(14)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 1)
+      .setAlpha(0);
+
+    const sub = this.add
+      .text(width / 2, toCamY(height * 0.42 + 56), TEXT.level1Subtitle, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '22px',
+        color: '#9a96b0',
+      })
+      .setOrigin(0.5)
+      .setScale(1 / z)
+      .setLetterSpacing(6)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 1)
+      .setAlpha(0);
+
+    this.tweens.add({
+      targets: [title, sub],
+      alpha: 1,
+      duration: 900,
+      hold: 1800,
+      yoyo: true,
+      onComplete: () => {
+        title.destroy();
+        sub.destroy();
+      },
+    });
+  }
+
+  private setupWaveUI() {
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
+    const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
+
+    // Corner wave indicator (top-left) - wide cinematic typography matching The Veil
+    this.cornerWaveText = this.add
+      .text(toCamX(32), toCamY(28), 'WAVE I', {
+        fontFamily: 'Georgia, serif',
+        fontSize: '18px',
+        color: '#ece8f4',
+      })
+      .setOrigin(0, 0)
+      .setScale(1 / z)
+      .setLetterSpacing(6)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 10)
+      .setAlpha(0.85);
+
+    // Small light level indicator (bottom-right)
+    const pct = Math.round(this.blackPoint * 100);
+    const sign = pct > 0 ? '+' : '';
+    this.lightLevelText = this.add
+      .text(toCamX(width - 32), toCamY(height - 28), `LIGHT ${sign}${pct}%`, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '16px',
+        color: '#ece8f4',
+      })
+      .setOrigin(1, 1)
+      .setScale(1 / z)
+      .setLetterSpacing(4)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 10)
+      .setAlpha(0.85);
+  }
+
+  private announceWave(titleText: string, subText: string = '') {
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamY = (screenY: number) => height / 2 + (screenY - height / 2) / z;
+
+    if (this.waveAnnounceTitle) {
+      this.waveAnnounceTitle.destroy();
+      this.waveAnnounceTitle = null;
+    }
+    if (this.waveAnnounceSub) {
+      this.waveAnnounceSub.destroy();
+      this.waveAnnounceSub = null;
+    }
+
+    this.waveAnnounceTitle = this.add
+      .text(width / 2, toCamY(height * 0.42), titleText, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '72px',
+        color: '#ece8f4',
+      })
+      .setOrigin(0.5)
+      .setScale(1 / z)
+      .setLetterSpacing(14)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 2)
+      .setAlpha(0);
+
+    const targets: Phaser.GameObjects.Text[] = [this.waveAnnounceTitle];
+
+    if (subText) {
+      this.waveAnnounceSub = this.add
+        .text(width / 2, toCamY(height * 0.42 + 56), subText, {
+          fontFamily: 'Georgia, serif',
+          fontSize: '22px',
+          color: '#9a96b0',
+        })
+        .setOrigin(0.5)
+        .setScale(1 / z)
+        .setLetterSpacing(6)
+        .setScrollFactor(0)
+        .setDepth(DEPTH.screen + 2)
+        .setAlpha(0);
+      targets.push(this.waveAnnounceSub);
+    }
+
+    this.tweens.add({
+      targets,
+      alpha: 1,
+      duration: 900,
+      hold: 1800,
+      yoyo: true,
+      onComplete: () => {
+        if (this.waveAnnounceTitle) {
+          this.waveAnnounceTitle.destroy();
+          this.waveAnnounceTitle = null;
+        }
+        if (this.waveAnnounceSub) {
+          this.waveAnnounceSub.destroy();
+          this.waveAnnounceSub = null;
+        }
+      },
+    });
+  }
+
+  private spawnEnemyAtAngle(type: ChampionType, angleRad: number): Enemy {
+    const cx = LEVEL1.floorCenter.x;
+    const cy = LEVEL1.floorCenter.y;
+    const dist = 850;
+    const x = cx + Math.cos(angleRad) * dist;
+    const y = cy + Math.sin(angleRad) * (dist * 0.7);
+
+    const enemy = new Enemy(this, x, y, type);
+    this.enemies.push(enemy);
+    this.waveGroupEnemies.push(enemy);
+    return enemy;
+  }
+
+  private startWave(waveNum: number) {
+    this.currentWave = waveNum;
+    this.wavePhase = 0;
+    this.waveGroupEnemies = [];
+    this.waveTimerEvents.forEach((t) => t.remove());
+    this.waveTimerEvents = [];
+
+    const romanNums = ['', 'I', 'II', 'III'];
+    const waveRoman = romanNums[waveNum] || `${waveNum}`;
+
+    if (this.cornerWaveText) {
+      this.cornerWaveText.setText(`WAVE ${waveRoman}`);
+    }
+
+    if (waveNum === 1) {
+      // Delay wave 1 announcement slightly so "The Veil" title card displays first
+      this.time.delayedCall(3000, () => {
+        this.announceWave(`WAVE ${waveRoman}`);
+      });
+      this.startWave1();
+    } else {
+      this.announceWave(`WAVE ${waveRoman}`);
+      if (waveNum === 2) {
+        this.startWave2();
+      } else if (waveNum === 3) {
+        this.startWave3();
+      }
+    }
+  }
+
+  // Wave 1: 3 Yis from different angles spaced 2s apart, then 1 Zed after defeating all of them
+  private startWave1() {
+    this.wavePendingSpawns = 3;
+    const angles = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3];
+
+    angles.forEach((angle, i) => {
+      const t = this.time.delayedCall(i * 2000, () => {
+        this.wavePendingSpawns--;
+        this.spawnEnemyAtAngle('Yi', angle);
+      });
+      this.waveTimerEvents.push(t);
+    });
+  }
+
+  // Wave 2: 2 Yis at a time twice separated by 6s, then 2 Zeds after defeating all of them
+  private startWave2() {
+    this.wavePendingSpawns = 4;
+
+    // Spawn 2 Yis at 0s
+    this.wavePendingSpawns -= 2;
+    this.spawnEnemyAtAngle('Yi', Math.PI * 0.25);
+    this.spawnEnemyAtAngle('Yi', Math.PI * 1.25);
+
+    // Spawn 2 Yis at 6s
+    const t = this.time.delayedCall(6000, () => {
+      this.wavePendingSpawns -= 2;
+      this.spawnEnemyAtAngle('Yi', Math.PI * 0.75);
+      this.spawnEnemyAtAngle('Yi', Math.PI * 1.75);
+    });
+    this.waveTimerEvents.push(t);
+  }
+
+  // Wave 3: 1 Yi every second until 5 Yis, then 3 Zeds. All in different locations.
+  private startWave3() {
+    this.wavePendingSpawns = 8;
+    // 8 distinct angles evenly distributed around the perimeter
+    const angles = Array.from({ length: 8 }, (_, i) => i * ((Math.PI * 2) / 8) + 0.15);
+
+    // Spawn 5 Yis, 1 second apart (t = 0, 1, 2, 3, 4s)
+    for (let i = 0; i < 5; i++) {
+      const t = this.time.delayedCall(i * 1000, () => {
+        this.wavePendingSpawns--;
+        this.spawnEnemyAtAngle('Yi', angles[i]);
+      });
+      this.waveTimerEvents.push(t);
+    }
+
+    // Spawn 3 Zeds at 5s in 3 different locations
+    const tBoss = this.time.delayedCall(5000, () => {
+      for (let j = 5; j < 8; j++) {
+        this.wavePendingSpawns--;
+        this.spawnEnemyAtAngle('Zed', angles[j]);
+      }
+    });
+    this.waveTimerEvents.push(tBoss);
+  }
+
+  private onEnemyDefeated(enemy: Enemy) {
+    // Brighten the background and level props: increase black point by 5% (0.05) per enemy defeated, capped at 50% (0.50)
+    this.blackPoint = Math.min(0.50, this.blackPoint + 0.05);
+    this.applyBlackPoint();
+
+    this.checkWaveProgress();
+  }
+
+  private checkWaveProgress() {
+    const activeInGroup = this.waveGroupEnemies.filter((e) => !e.isDead);
+
+    // Wave 1 Progression
+    if (this.currentWave === 1) {
+      if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0) {
+        // All 3 Yis defeated -> spawn 1 Zed
+        this.wavePhase = 1;
+        this.time.delayedCall(1200, () => {
+          this.waveGroupEnemies = [];
+          this.spawnEnemyAtAngle('Zed', Math.PI * 0.5);
+        });
+      } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
+        // Zed defeated -> Wave 1 Complete!
+        this.wavePhase = 2;
+        this.time.delayedCall(2500, () => {
+          this.startWave(2);
+        });
+      }
+      return;
+    }
+
+    // Wave 2 Progression
+    if (this.currentWave === 2) {
+      if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0) {
+        // All 4 Yis defeated -> spawn 2 Zeds at different locations
+        this.wavePhase = 1;
+        this.time.delayedCall(1200, () => {
+          this.waveGroupEnemies = [];
+          this.spawnEnemyAtAngle('Zed', Math.PI * 0.5);
+          this.spawnEnemyAtAngle('Zed', Math.PI * 1.5);
+        });
+      } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
+        // Both Zeds defeated -> Wave 2 Complete!
+        this.wavePhase = 2;
+        this.time.delayedCall(2500, () => {
+          this.startWave(3);
+        });
+      }
+      return;
+    }
+
+    // Wave 3 Progression
+    if (this.currentWave === 3) {
+      if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0 && this.waveGroupEnemies.every((e) => e.isDead)) {
+        this.wavePhase = 1;
+        if (this.cornerWaveText) {
+          this.cornerWaveText.setText('VICTORY');
+        }
+        this.announceWave('VICTORY');
+      }
+      return;
     }
   }
 
@@ -217,84 +778,9 @@ export class GameScene extends Phaser.Scene {
     cam.setScroll(cam.scrollX + (t.x - cam.scrollX) * k, cam.scrollY + (t.y - cam.scrollY) * k);
   }
 
-  // ---------- UI ----------
-  private showTitleCard() {
-    const { width, height } = this.scale;
-    const z = BALANCE.level1CameraZoom;
-    const toCamY = (screenY: number) => height / 2 + (screenY - height / 2) / z;
-
-    const title = this.add
-      .text(width / 2, toCamY(height * 0.42), TEXT.level1Title, {
-        fontFamily: 'Georgia, serif',
-        fontSize: '72px',
-        color: '#ece8f4',
-      })
-      .setOrigin(0.5)
-      .setScale(1 / z)
-      .setLetterSpacing(14)
-      .setScrollFactor(0)
-      .setDepth(DEPTH.screen + 1)
-      .setAlpha(0);
-    const sub = this.add
-      .text(width / 2, toCamY(height * 0.42 + 56), TEXT.level1Subtitle, {
-        fontFamily: 'Georgia, serif',
-        fontSize: '22px',
-        color: '#9a96b0',
-      })
-      .setOrigin(0.5)
-      .setScale(1 / z)
-      .setLetterSpacing(6)
-      .setScrollFactor(0)
-      .setDepth(DEPTH.screen + 1)
-      .setAlpha(0);
-    this.tweens.add({
-      targets: [title, sub],
-      alpha: 1,
-      duration: 900,
-      hold: 1800,
-      yoyo: true,
-      onComplete: () => [title, sub].forEach((t) => t.destroy()),
-    });
-
-    this.add
-      .text(
-        width / 2,
-        toCamY(height - 22),
-        'WASD: Move | Shift: Sprint | Space: Roll | L-Click: Attack | R-Click: Block | G: Toggle Debug',
-        {
-          fontSize: '15px',
-          color: '#e4e0f2',
-          stroke: '#000000',
-          strokeThickness: 4,
-        },
-      )
-      .setOrigin(0.5)
-      .setScale(1 / z)
-      .setScrollFactor(0)
-      .setDepth(DEPTH.screen + 1)
-      .setAlpha(0.75);
-  }
-
   // -----------------------------------------------------------------
   // 8-DIRECTION CALCULATION (0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE)
   // -----------------------------------------------------------------
-  private computeAimDirection(): number {
-    const pointer = this.input.activePointer;
-    const dx = pointer.worldX - this.player.x;
-    const dy = pointer.worldY - this.player.y;
-
-    if (dx * dx + dy * dy < 16) {
-      return this.currentAimDir; // keep previous if right on player
-    }
-
-    const rad = Math.atan2(dy, dx);
-    let deg = Phaser.Math.RadToDeg(rad);
-    if (deg < 0) deg += 360;
-
-    // Sector of 45° centered at 0° is [-22.5°, 22.5°), so add 22.5°
-    return Math.floor(((deg + 22.5) % 360) / 45);
-  }
-
   private computeMoveDirection(moveX: number, moveY: number): number {
     const rad = Math.atan2(moveY, moveX);
     let deg = Phaser.Math.RadToDeg(rad);
@@ -308,7 +794,6 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Preserve frame progress when rotating the same animation across directions
     const isSameBase = this.currentBaseAnim === baseKey;
     const currentProgress = isSameBase ? this.player.anims.getProgress() : 0;
 
@@ -342,13 +827,27 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Track mouse aim direction
-    this.currentAimDir = this.computeAimDirection();
+    // Aim direction follows movement (WASD: all 8 directions)
+    let moveX = 0;
+    let moveY = 0;
+    if (this.keyW.isDown) moveY -= 1;
+    if (this.keyS.isDown) moveY += 1;
+    if (this.keyA.isDown) moveX -= 1;
+    if (this.keyD.isDown) moveX += 1;
+
+    if (
+      this.currentAction !== 'attack' &&
+      this.currentAction !== 'kick' &&
+      this.currentAction !== 'pummel' &&
+      (moveX !== 0 || moveY !== 0)
+    ) {
+      this.currentAimDir = this.computeMoveDirection(moveX, moveY);
+    }
 
     this.handleActionInputs();
     this.handleLocomotion(dt);
 
-    // 1. Compute crowd separation vectors for all enemies
+    // 1. Compute crowd separation vectors for all alive enemies
     for (const enemy of this.enemies) {
       enemy.computeSeparation(this.enemies);
     }
@@ -361,8 +860,14 @@ export class GameScene extends Phaser.Scene {
     // 2.5D depth sorting based on ground feet position
     this.player.setDepth(this.player.y);
 
+    // Sync white bloom glow with character position & depth
+    this.updatePlayerBloom();
+
     // Check enemy attacks hitting player
     this.checkEnemyAttackHit(dt);
+
+    // Update background black point decay (only when enemies are on screen)
+    this.updateBlackPoint(dt);
 
     // Update smooth camera follow
     this.updateCamera(dt);
@@ -428,7 +933,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
-      // 180 turn opposite to current aim
       this.actionDir = (this.currentAimDir + 4) % 8;
       this.currentAction = 'turn';
       this.playDirectional('180Turn', this.currentAimDir, false);
@@ -451,7 +955,6 @@ export class GameScene extends Phaser.Scene {
         this.currentAction = 'block';
         this.playDirectional('ShieldBlockStart', this.currentAimDir, false);
       } else {
-        // Track mouse rotation while holding block
         this.playDirectional('ShieldBlockMid', this.currentAimDir, true);
       }
     } else if (this.currentAction === 'block') {
@@ -472,7 +975,7 @@ export class GameScene extends Phaser.Scene {
       this.actionDir = this.currentAimDir;
       this.currentAction = 'attack';
       this.playDirectional('MeleeRun', this.currentAimDir, false);
-      this.scheduleAttackHitCheck(120);
+      this.scheduleAttackHitCheck(120, true);
       return;
     }
 
@@ -495,7 +998,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'attack';
     this.playDirectional(nextAnim, this.currentAimDir, false);
-    this.scheduleAttackHitCheck(130);
+    this.scheduleAttackHitCheck(130, true);
 
     this.comboResetTimer = this.time.delayedCall(1200, () => {
       this.attackComboStep = 0;
@@ -550,7 +1053,6 @@ export class GameScene extends Phaser.Scene {
   private triggerHurt() {
     this.actionDir = this.currentAimDir;
     const rad = Phaser.Math.DegToRad(this.actionDir * 45);
-    // Knockback opposite to facing
     this.actionVelocity.set(-Math.cos(rad) * 140, -Math.sin(rad) * 140);
 
     this.currentAction = 'hurt';
@@ -562,32 +1064,36 @@ export class GameScene extends Phaser.Scene {
     this.currentAction = 'die';
     this.actionVelocity.set(0, 0);
     this.playDirectional('Die', this.currentAimDir, false);
+    if (this.playerGlowGround && this.playerGlowCore) {
+      this.playerGlowGround.setVisible(false);
+      this.playerGlowCore.setVisible(false);
+    }
   }
 
   private revive() {
     this.isDead = false;
     this.currentAction = 'idle';
+    this.health = this.maxHealth;
+    this.drawHealthBar();
     this.player.setPosition(LEVEL1.playerStart.x, LEVEL1.playerStart.y);
     this.playDirectional('Idle', this.currentAimDir, false);
+    if (this.playerGlowGround && this.playerGlowCore) {
+      this.playerGlowGround.setVisible(true);
+      this.playerGlowCore.setVisible(true);
+    }
+    if (this.cornerWaveText) {
+      const romanNums = ['', 'I', 'II', 'III'];
+      this.cornerWaveText.setText(`WAVE ${romanNums[this.currentWave] || this.currentWave}`);
+    }
   }
 
   private playOneShotAction(animBase: string, actionState: ActionState) {
     this.actionDir = this.currentAimDir;
     this.currentAction = actionState;
     this.playDirectional(animBase, this.currentAimDir, false);
-
-    if (
-      actionState === 'kick' ||
-      actionState === 'pummel' ||
-      animBase === 'MeleeSpin' ||
-      animBase === 'Special1' ||
-      animBase === 'Special2'
-    ) {
-      this.scheduleAttackHitCheck(140);
-    }
   }
 
-  private scheduleAttackHitCheck(delayMs: number) {
+  private scheduleAttackHitCheck(delayMs: number, isLeftClick = true) {
     this.time.delayedCall(delayMs, () => {
       if (
         this.currentAction === 'attack' ||
@@ -596,54 +1102,21 @@ export class GameScene extends Phaser.Scene {
         this.currentAction === 'special1' ||
         this.currentAction === 'special2'
       ) {
-        this.checkPlayerAttackHit();
+        if (isLeftClick) {
+          this.checkPlayerAttackHit();
+        }
       }
     });
-  }
-
-  private spawnEdgeEnemies(count: number) {
-    const worldW = LEVEL1.world.width;
-    const worldH = LEVEL1.world.height;
-    const margin = 100;
-
-    for (let i = 0; i < count; i++) {
-      // Distribute evenly across 4 edges: 0=Top, 1=Right, 2=Bottom, 3=Left
-      const edge = i % 4;
-      let startX = 0;
-      let startY = 0;
-
-      // Distance offset just outside visible frame so they stream in continuously
-      const depthOffset = Phaser.Math.Between(50, 180);
-
-      switch (edge) {
-        case 0: // Top
-          startX = Phaser.Math.Between(margin, worldW - margin);
-          startY = -depthOffset;
-          break;
-        case 1: // Right
-          startX = worldW + depthOffset;
-          startY = Phaser.Math.Between(margin, worldH - margin);
-          break;
-        case 2: // Bottom
-          startX = Phaser.Math.Between(margin, worldW - margin);
-          startY = worldH + depthOffset;
-          break;
-        case 3: // Left
-          startX = -depthOffset;
-          startY = Phaser.Math.Between(margin, worldH - margin);
-          break;
-      }
-
-      const championType = i % 2 === 0 ? 'Yi' : 'Zed';
-      const enemy = new Enemy(this, startX, startY, championType);
-      this.enemies.push(enemy);
-    }
   }
 
   private checkPlayerAttackHit() {
     if (this.enemies.length === 0 || this.isDead) return;
 
+    let hasKills = false;
+
     for (const enemy of this.enemies) {
+      if (enemy.isDead) continue;
+
       const dx = enemy.x - this.player.x;
       const dy = enemy.y - this.player.y;
       const dist = Math.hypot(dx, dy);
@@ -665,8 +1138,17 @@ export class GameScene extends Phaser.Scene {
         this.player.anims.currentAnim?.key.startsWith('MeleeSpin_') ||
         this.player.anims.currentAnim?.key.startsWith('Special1_');
       if (isSpin || diff < 85) {
-        enemy.takeDamage(this.player.x, this.player.y, this.env.area);
+        // Left click deals 1 damage (Yi dies in 2 hits, Zed dies in 4 hits)
+        const killed = enemy.takeDamage(this.player.x, this.player.y, this.env.area, 1);
+        if (killed) {
+          hasKills = true;
+          this.onEnemyDefeated(enemy);
+        }
       }
+    }
+
+    if (hasKills) {
+      this.enemies = this.enemies.filter((e) => !e.isDead);
     }
   }
 
@@ -679,7 +1161,7 @@ export class GameScene extends Phaser.Scene {
     if (this.enemies.length === 0 || this.isDead) return;
 
     for (const enemy of this.enemies) {
-      if (!enemy.isPerformingAttack()) continue;
+      if (enemy.isDead || enemy.isStumbling || !enemy.isPerformingAttack()) continue;
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
       if (dist > 75) continue;
@@ -689,17 +1171,20 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      // Shield block active: absorb impact and push back slightly
+      // Shield block active: absorb impact, reset enemy cooldown, no damage taken
       if (this.currentAction === 'block') {
         const rad = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
         this.movePlayer(Math.cos(rad) * 16, Math.sin(rad) * 16);
+        enemy.resetAttackCooldown();
         this.enemyHitCooldown = 0.5;
         return;
       }
 
-      // Player takes damage
+      // Player takes damage: Yi deals 1 (1s cd), Zed deals 5 (0.75s cd)
+      this.damagePlayer(enemy.attackDamage);
+      enemy.resetAttackCooldown();
       this.triggerHurt();
-      this.enemyHitCooldown = 0.8;
+      this.enemyHitCooldown = enemy.championType === 'Zed' ? 0.35 : 0.6;
       return;
     }
   }
@@ -813,31 +1298,17 @@ export class GameScene extends Phaser.Scene {
         moveInput.y * speed * dt * 0.85,
       );
 
-      // Angular difference between aim direction and movement direction
-      const moveDir = this.computeMoveDirection(moveInput.x, moveInput.y);
-      let diff = Math.abs(this.currentAimDir - moveDir);
-      if (diff > 4) diff = 8 - diff;
+      // Sprite aims whichever way it moves (8 directions)
+      this.currentAimDir = this.computeMoveDirection(moveInput.x, moveInput.y);
 
-      let targetAnim = 'Walk';
-
-      if (isCrouching) {
-        targetAnim = 'CrouchRun';
-      } else if (diff >= 3) {
-        // Moving backwards relative to mouse aim
-        targetAnim = 'RunBackwards';
-      } else if (diff === 2) {
-        // Moving sideways perpendicular to mouse aim
-        const signedDiff = (moveDir - this.currentAimDir + 8) % 8;
-        targetAnim = signedDiff === 2 ? 'StrafeRight' : 'StrafeLeft';
-      } else if (isSprinting) {
-        targetAnim = 'Run';
-      } else {
-        targetAnim = 'Walk';
-      }
+      const targetAnim = isCrouching
+        ? 'CrouchRun'
+        : isSprinting
+          ? 'Run'
+          : 'Walk';
 
       this.playDirectional(targetAnim, this.currentAimDir, true);
     } else {
-      // Standing still facing mouse direction
       this.currentAction = 'idle';
 
       const isCrouching = this.keyC.isDown;
