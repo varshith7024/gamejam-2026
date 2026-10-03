@@ -5,6 +5,8 @@ import {
   YI_CONFIG,
   ZED_CONFIG,
 } from '../config/championAnimations';
+import { LEVEL1 } from '../environment/level1Data';
+import type { WalkableArea } from '../environment/Collision';
 
 export class Enemy extends Phaser.GameObjects.Sprite {
   public championType: ChampionType;
@@ -20,7 +22,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
   private walkSpeed = 80;
   private attackCooldown = 0;
-  private hasEnteredScreen = false;
+  private hasEnteredArena = false;
 
   // Crowd separation
   private separationX = 0;
@@ -46,9 +48,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     scene.add.existing(this);
 
-    // Initial direction facing towards arena center
-    const dx = scene.scale.width / 2 - x;
-    const dy = scene.scale.height / 2 - y;
+    // Initial direction facing towards arena floor center
+    const dx = LEVEL1.floorCenter.x - x;
+    const dy = LEVEL1.floorCenter.y - y;
     this.currentDir = this.computeDirection(dx, dy);
 
     // Start locomotion animation with desynchronized cycle
@@ -87,7 +89,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     }
   }
 
-  public update(dt: number, playerX?: number, playerY?: number) {
+  public update(dt: number, playerX?: number, playerY?: number, area?: WalkableArea) {
     if (this.attackCooldown > 0) {
       this.attackCooldown -= dt;
     }
@@ -124,9 +126,30 @@ export class Enemy extends Phaser.GameObjects.Sprite {
           }
         }
 
-        // Advance position
-        this.x += vx * this.walkSpeed * dt;
-        this.y += vy * this.walkSpeed * dt;
+        const stepX = vx * this.walkSpeed * dt;
+        const stepY = vy * this.walkSpeed * dt * 0.85;
+        const rx = this.championType === 'Zed' ? 16 : 10;
+        const ry = this.championType === 'Zed' ? 8 : 5;
+
+        if (area) {
+          if (!this.hasEnteredArena) {
+            if (area.canStand(this.x, this.y, rx, ry)) {
+              this.hasEnteredArena = true;
+            }
+          }
+
+          if (this.hasEnteredArena) {
+            const p = area.move(this.x, this.y, stepX, stepY, rx, ry);
+            this.x = p.x;
+            this.y = p.y;
+          } else {
+            this.x += stepX;
+            this.y += stepY;
+          }
+        } else {
+          this.x += stepX;
+          this.y += stepY;
+        }
 
         // Keep facing direction aligned with movement velocity
         const moveDir = this.computeDirection(vx, vy);
@@ -138,23 +161,8 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       }
     }
 
-    // Depth sorting based on feet position
+    // Depth sorting based on ground feet position
     this.setDepth(this.y);
-
-    // Screen edge transition: allow entering from outside borders before clamping
-    if (!this.hasEnteredScreen) {
-      const margin = 35;
-      if (
-        this.x >= margin &&
-        this.x <= this.scene.scale.width - margin &&
-        this.y >= margin &&
-        this.y <= this.scene.scale.height - margin
-      ) {
-        this.hasEnteredScreen = true;
-      }
-    } else {
-      this.clampToScreen();
-    }
   }
 
   private startChasing() {
@@ -186,7 +194,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     });
   }
 
-  public takeDamage(fromX: number, fromY: number) {
+  public takeDamage(fromX: number, fromY: number, area?: WalkableArea) {
     this.isMoving = false;
     this.isActing = true;
     this.currentAnimKey = 'get_hit';
@@ -199,9 +207,19 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     // Knockback away from player
     const rad = Math.atan2(this.y - fromY, this.x - fromX);
     const knockbackDist = 24;
-    this.x += Math.cos(rad) * knockbackDist;
-    this.y += Math.sin(rad) * knockbackDist;
-    this.clampToScreen();
+    const kx = Math.cos(rad) * knockbackDist;
+    const ky = Math.sin(rad) * knockbackDist * 0.85;
+    const rx = this.championType === 'Zed' ? 16 : 10;
+    const ry = this.championType === 'Zed' ? 8 : 5;
+
+    if (area && this.hasEnteredArena) {
+      const p = area.move(this.x, this.y, kx, ky, rx, ry);
+      this.x = p.x;
+      this.y = p.y;
+    } else {
+      this.x += kx;
+      this.y += ky;
+    }
 
     // Safety timeout to resume chasing after taking damage
     this.scene.time.delayedCall(700, () => {
@@ -247,11 +265,5 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     // Map: East(0)->2, SE(1)->3, South(2)->4, SW(3)->5, West(4)->6, NW(5)->7, North(6)->0, NE(7)->1
     return (stdDir + 2) % 8;
-  }
-
-  private clampToScreen() {
-    const margin = 35;
-    this.x = Phaser.Math.Clamp(this.x, margin, this.scene.scale.width - margin);
-    this.y = Phaser.Math.Clamp(this.y, margin, this.scene.scale.height - margin);
   }
 }

@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
 import { Enemy } from '../entities/Enemy';
+import { Level1Environment, DEPTH } from '../environment/Level1Environment';
+import { Atmosphere } from '../effects/Atmosphere';
+import { LEVEL1 } from '../environment/level1Data';
+import { BALANCE } from '../config/balance';
+import { TEXT } from '../config/text';
 
 type ActionState =
   | 'idle'
@@ -20,8 +25,11 @@ type ActionState =
   | 'unsheath';
 
 export class GameScene extends Phaser.Scene {
+  public env!: Level1Environment;
+  private atmosphere!: Atmosphere;
   private player!: Phaser.GameObjects.Sprite;
   private enemies: Enemy[] = [];
+  private debugOn = false;
 
   // Directions: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE
   private currentAimDir = 0;
@@ -65,32 +73,50 @@ export class GameScene extends Phaser.Scene {
   private keyU!: Phaser.Input.Keyboard.Key;
   private keyH!: Phaser.Input.Keyboard.Key;
   private keyK!: Phaser.Input.Keyboard.Key;
+  private keyG!: Phaser.Input.Keyboard.Key;
 
-  constructor() {
-    super('Game');
+  constructor(key: string = 'Game') {
+    super(key);
   }
 
   create() {
-    const { width, height } = this.scale;
-
-    // Blank white canvas
-    this.cameras.main.setBackgroundColor('#ffffff');
-
-    // Disable browser right-click context menu for shield block
+    this.cameras.main.setBackgroundColor('#000000');
     this.input.mouse?.disableContextMenu();
 
-    // Create player sprite (no flipX needed because all 8 directions are rendered in sprite sheet)
+    // Reset state in case of restart
+    this.enemies = [];
+    this.isDead = false;
+    this.enemyHitCooldown = 0;
+    this.currentAction = 'idle';
+    this.actionVelocity.set(0, 0);
+
+    // Build environment and atmosphere
+    this.env = new Level1Environment(this);
+    this.atmosphere = new Atmosphere(this);
+    this.atmosphere.create();
+
+    // Create player sprite (origin at ground feet contact point)
     this.currentAimDir = 0; // Starts facing right (East)
-    this.player = this.add.sprite(width / 2, height / 2, 'Idle', 0);
+    this.player = this.add.sprite(LEVEL1.playerStart.x, LEVEL1.playerStart.y, 'Idle', 0);
     this.player.setOrigin(0.5, 0.78);
     this.player.setScale(1.1);
+    this.player.setDepth(this.player.y);
     this.playDirectional('Idle', 0, false);
 
-    // Spawn 20 enemies coming out of the screen edges
+    // Spawn 20 enemies around the edges of LEVEL1.world
     this.spawnEdgeEnemies(20);
 
     this.setupInput();
     this.setupAnimationCallbacks();
+    this.setupCamera();
+    this.showTitleCard();
+
+    // Debug mode (?debug in URL)
+    if (new URLSearchParams(window.location.search).has('debug')) {
+      this.debugOn = true;
+      this.env.setDebug(true);
+      (window as unknown as Record<string, unknown>).__level1 = this;
+    }
   }
 
   private setupInput() {
@@ -114,6 +140,7 @@ export class GameScene extends Phaser.Scene {
     this.keyU = kb.addKey(Phaser.Input.Keyboard.KeyCodes.U);
     this.keyH = kb.addKey(Phaser.Input.Keyboard.KeyCodes.H);
     this.keyK = kb.addKey(Phaser.Input.Keyboard.KeyCodes.K);
+    this.keyG = kb.addKey(Phaser.Input.Keyboard.KeyCodes.G);
 
     // Left Click Attack
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -160,6 +187,92 @@ export class GameScene extends Phaser.Scene {
         }
       },
     );
+  }
+
+  // ---------- Camera ----------
+  private setupCamera() {
+    const cam = this.cameras.main;
+    cam.setBounds(0, 0, LEVEL1.world.width, LEVEL1.world.height);
+    cam.setRoundPixels(true);
+    cam.setZoom(BALANCE.level1CameraZoom);
+    const t = this.cameraTarget();
+    cam.setScroll(t.x, t.y);
+  }
+
+  private cameraTarget() {
+    const cam = this.cameras.main;
+    const f = BALANCE.level1CameraFollow;
+    const cx = LEVEL1.floorCenter.x + (this.player.x - LEVEL1.floorCenter.x) * f;
+    const cy = LEVEL1.floorCenter.y + (this.player.y - LEVEL1.floorCenter.y) * f;
+    return {
+      x: cam.clampX(cx - cam.width / 2),
+      y: cam.clampY(cy - cam.height / 2),
+    };
+  }
+
+  private updateCamera(dt: number) {
+    const cam = this.cameras.main;
+    const t = this.cameraTarget();
+    const k = 1 - Math.exp(-BALANCE.level1CameraSmoothing * dt);
+    cam.setScroll(cam.scrollX + (t.x - cam.scrollX) * k, cam.scrollY + (t.y - cam.scrollY) * k);
+  }
+
+  // ---------- UI ----------
+  private showTitleCard() {
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamY = (screenY: number) => height / 2 + (screenY - height / 2) / z;
+
+    const title = this.add
+      .text(width / 2, toCamY(height * 0.42), TEXT.level1Title, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '72px',
+        color: '#ece8f4',
+      })
+      .setOrigin(0.5)
+      .setScale(1 / z)
+      .setLetterSpacing(14)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 1)
+      .setAlpha(0);
+    const sub = this.add
+      .text(width / 2, toCamY(height * 0.42 + 56), TEXT.level1Subtitle, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '22px',
+        color: '#9a96b0',
+      })
+      .setOrigin(0.5)
+      .setScale(1 / z)
+      .setLetterSpacing(6)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 1)
+      .setAlpha(0);
+    this.tweens.add({
+      targets: [title, sub],
+      alpha: 1,
+      duration: 900,
+      hold: 1800,
+      yoyo: true,
+      onComplete: () => [title, sub].forEach((t) => t.destroy()),
+    });
+
+    this.add
+      .text(
+        width / 2,
+        toCamY(height - 22),
+        'WASD: Move | Shift: Sprint | Space: Roll | L-Click: Attack | R-Click: Block | G: Toggle Debug',
+        {
+          fontSize: '15px',
+          color: '#e4e0f2',
+          stroke: '#000000',
+          strokeThickness: 4,
+        },
+      )
+      .setOrigin(0.5)
+      .setScale(1 / z)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 1)
+      .setAlpha(0.75);
   }
 
   // -----------------------------------------------------------------
@@ -211,7 +324,12 @@ export class GameScene extends Phaser.Scene {
   // UPDATE LOOP
   // -----------------------------------------------------------------
   update(_time: number, deltaMs: number) {
-    const dt = deltaMs / 1000;
+    const dt = Math.min(deltaMs / 1000, 0.05);
+
+    if (Phaser.Input.Keyboard.JustDown(this.keyG)) {
+      this.debugOn = !this.debugOn;
+      this.env.setDebug(this.debugOn);
+    }
 
     if (this.isDead) {
       if (
@@ -220,6 +338,7 @@ export class GameScene extends Phaser.Scene {
       ) {
         this.revive();
       }
+      this.updateCamera(dt);
       return;
     }
 
@@ -234,9 +353,9 @@ export class GameScene extends Phaser.Scene {
       enemy.computeSeparation(this.enemies);
     }
 
-    // 2. Update all enemies pursuing the player
+    // 2. Update all enemies pursuing the player in the arena
     for (const enemy of this.enemies) {
-      enemy.update(dt, this.player.x, this.player.y);
+      enemy.update(dt, this.player.x, this.player.y, this.env.area);
     }
 
     // 2.5D depth sorting based on ground feet position
@@ -244,6 +363,9 @@ export class GameScene extends Phaser.Scene {
 
     // Check enemy attacks hitting player
     this.checkEnemyAttackHit(dt);
+
+    // Update smooth camera follow
+    this.updateCamera(dt);
   }
 
   // -----------------------------------------------------------------
@@ -445,6 +567,7 @@ export class GameScene extends Phaser.Scene {
   private revive() {
     this.isDead = false;
     this.currentAction = 'idle';
+    this.player.setPosition(LEVEL1.playerStart.x, LEVEL1.playerStart.y);
     this.playDirectional('Idle', this.currentAimDir, false);
   }
 
@@ -479,8 +602,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnEdgeEnemies(count: number) {
-    const { width, height } = this.scale;
-    const margin = 80;
+    const worldW = LEVEL1.world.width;
+    const worldH = LEVEL1.world.height;
+    const margin = 100;
 
     for (let i = 0; i < count; i++) {
       // Distribute evenly across 4 edges: 0=Top, 1=Right, 2=Bottom, 3=Left
@@ -489,24 +613,24 @@ export class GameScene extends Phaser.Scene {
       let startY = 0;
 
       // Distance offset just outside visible frame so they stream in continuously
-      const depthOffset = Phaser.Math.Between(45, 160);
+      const depthOffset = Phaser.Math.Between(50, 180);
 
       switch (edge) {
         case 0: // Top
-          startX = Phaser.Math.Between(margin, width - margin);
+          startX = Phaser.Math.Between(margin, worldW - margin);
           startY = -depthOffset;
           break;
         case 1: // Right
-          startX = width + depthOffset;
-          startY = Phaser.Math.Between(margin, height - margin);
+          startX = worldW + depthOffset;
+          startY = Phaser.Math.Between(margin, worldH - margin);
           break;
         case 2: // Bottom
-          startX = Phaser.Math.Between(margin, width - margin);
-          startY = height + depthOffset;
+          startX = Phaser.Math.Between(margin, worldW - margin);
+          startY = worldH + depthOffset;
           break;
         case 3: // Left
           startX = -depthOffset;
-          startY = Phaser.Math.Between(margin, height - margin);
+          startY = Phaser.Math.Between(margin, worldH - margin);
           break;
       }
 
@@ -541,7 +665,7 @@ export class GameScene extends Phaser.Scene {
         this.player.anims.currentAnim?.key.startsWith('MeleeSpin_') ||
         this.player.anims.currentAnim?.key.startsWith('Special1_');
       if (isSpin || diff < 85) {
-        enemy.takeDamage(this.player.x, this.player.y);
+        enemy.takeDamage(this.player.x, this.player.y, this.env.area);
       }
     }
   }
@@ -568,9 +692,7 @@ export class GameScene extends Phaser.Scene {
       // Shield block active: absorb impact and push back slightly
       if (this.currentAction === 'block') {
         const rad = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
-        this.player.x += Math.cos(rad) * 16;
-        this.player.y += Math.sin(rad) * 16;
-        this.clampToScreen();
+        this.movePlayer(Math.cos(rad) * 16, Math.sin(rad) * 16);
         this.enemyHitCooldown = 0.5;
         return;
       }
@@ -601,6 +723,24 @@ export class GameScene extends Phaser.Scene {
     return v;
   }
 
+  private movePlayer(dx: number, dy: number) {
+    if (!this.env || !this.env.area) {
+      this.player.x += dx;
+      this.player.y += dy;
+      return;
+    }
+    const pos = this.env.area.move(
+      this.player.x,
+      this.player.y,
+      dx,
+      dy,
+      BALANCE.level1FootRadiusX,
+      BALANCE.level1FootRadiusY,
+    );
+    this.player.x = pos.x;
+    this.player.y = pos.y;
+  }
+
   private handleLocomotion(dt: number) {
     const moveInput = this.getMovementInput();
     const hasMoveInput = moveInput.lengthSq() > 0;
@@ -612,33 +752,33 @@ export class GameScene extends Phaser.Scene {
       this.currentAction === 'slide' ||
       this.currentAction === 'hurt'
     ) {
-      this.player.x += this.actionVelocity.x * dt;
-      this.player.y += this.actionVelocity.y * dt;
+      this.movePlayer(this.actionVelocity.x * dt, this.actionVelocity.y * dt);
 
       if (this.currentAction === 'slide') {
         this.actionVelocity.scale(0.975);
       }
-      this.clampToScreen();
       return;
     }
 
     // Attacks allow running momentum
     if (this.currentAction === 'attack') {
       if (this.player.anims.currentAnim?.key.startsWith('MeleeRun_') && hasMoveInput) {
-        this.player.x += moveInput.x * (this.RUN_SPEED * 0.75) * dt;
-        this.player.y += moveInput.y * (this.RUN_SPEED * 0.75) * dt;
+        this.movePlayer(
+          moveInput.x * (this.RUN_SPEED * 0.75) * dt,
+          moveInput.y * (this.RUN_SPEED * 0.75) * dt * 0.85,
+        );
       }
-      this.clampToScreen();
       return;
     }
 
     // Block movement
     if (this.currentAction === 'block') {
       if (hasMoveInput) {
-        this.player.x += moveInput.x * this.BLOCK_SPEED * dt;
-        this.player.y += moveInput.y * this.BLOCK_SPEED * dt;
+        this.movePlayer(
+          moveInput.x * this.BLOCK_SPEED * dt,
+          moveInput.y * this.BLOCK_SPEED * dt * 0.85,
+        );
       }
-      this.clampToScreen();
       return;
     }
 
@@ -652,7 +792,6 @@ export class GameScene extends Phaser.Scene {
       this.currentAction === 'turn' ||
       this.currentAction === 'unsheath'
     ) {
-      this.clampToScreen();
       return;
     }
 
@@ -669,8 +808,10 @@ export class GameScene extends Phaser.Scene {
           ? this.RUN_SPEED
           : this.WALK_SPEED;
 
-      this.player.x += moveInput.x * speed * dt;
-      this.player.y += moveInput.y * speed * dt;
+      this.movePlayer(
+        moveInput.x * speed * dt,
+        moveInput.y * speed * dt * 0.85,
+      );
 
       // Angular difference between aim direction and movement direction
       const moveDir = this.computeMoveDirection(moveInput.x, moveInput.y);
@@ -704,13 +845,5 @@ export class GameScene extends Phaser.Scene {
 
       this.playDirectional(idleAnim, this.currentAimDir, true);
     }
-
-    this.clampToScreen();
-  }
-
-  private clampToScreen() {
-    const margin = 24;
-    this.player.x = Phaser.Math.Clamp(this.player.x, margin, this.scale.width - margin);
-    this.player.y = Phaser.Math.Clamp(this.player.y, margin, this.scale.height - margin);
   }
 }

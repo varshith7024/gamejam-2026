@@ -50,6 +50,7 @@ Complete control guide for the controllable Knight character in **Negative Space
 | Control | Action | Details |
 | :--- | :--- | :--- |
 | `B` | **180° Quick Turn** | Instantly spins character 180° opposite to current mouse cursor (`180Turn`). |
+| `G` | **Debug Overlay** | Toggles the walkable polygon and collision blocker debug wireframe. |
 | `H` | **Take Damage** | Flinch and recoil with slight knockback (`TakeDamage`). |
 | `K` | **Die** | Trigger character death collapse (`Die`). |
 | `K` or `Space` (When dead) | **Revive** | Revives character back to full standing idle (`Idle`). |

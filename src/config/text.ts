@@ -1,0 +1,11 @@
+// All on-screen text lives here (the writer edits this file).
+export const TEXT = {
+  title: 'NEGATIVE SPACE',
+  start: 'CLICK TO START',
+  gameOver: 'THE LIGHT IS GONE',
+  restart: 'PRESS R TO RESTART',
+  level1Title: 'THE VEIL',
+  level1Subtitle: 'Visual prototype',
+  level1Controls: 'WASD move   |   G collision debug',
+  controls: 'WASD move   |   Mouse aim + hold click to shoot   |   SPACE dash',
+};

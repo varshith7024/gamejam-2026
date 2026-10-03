@@ -7,6 +7,9 @@ import {
   NUM_DIRECTIONS,
 } from '../config/animations';
 import { YI_CONFIG, ZED_CONFIG } from '../config/championAnimations';
+import { Level1Environment } from '../environment/Level1Environment';
+import { Atmosphere } from '../effects/Atmosphere';
+import { resolveStartScene } from '../config/dev';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -14,7 +17,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    this.cameras.main.setBackgroundColor('#ffffff');
+    this.cameras.main.setBackgroundColor('#000000');
 
     // Preload Knight animations (1920x1024, 15 cols x 8 rows)
     for (const anim of KNIGHT_ANIMATIONS) {
@@ -42,6 +45,11 @@ export class BootScene extends Phaser.Scene {
         endFrame: anim.frames * anim.directions - 1,
       });
     }
+
+    // Preload Level 1 environment & atmospheric effects
+    Level1Environment.preload(this);
+    Atmosphere.preload(this);
+    this.load.setPath('');
   }
 
   create() {
@@ -99,6 +107,6 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
-    this.scene.start('Game');
+    this.scene.start(resolveStartScene());
   }
 }
