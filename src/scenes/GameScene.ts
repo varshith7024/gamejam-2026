@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { Enemy } from '../entities/Enemy';
 
 type ActionState =
   | 'idle'
@@ -20,6 +21,7 @@ type ActionState =
 
 export class GameScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Sprite;
+  private enemies: Enemy[] = [];
 
   // Directions: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE
   private currentAimDir = 0;
@@ -32,6 +34,7 @@ export class GameScene extends Phaser.Scene {
   private attackComboStep = 0;
   private comboResetTimer: Phaser.Time.TimerEvent | null = null;
   private isDead = false;
+  private enemyHitCooldown = 0;
 
   // Speeds (pixels per second)
   private readonly WALK_SPEED = 180;
@@ -82,6 +85,9 @@ export class GameScene extends Phaser.Scene {
     this.player.setOrigin(0.5, 0.78);
     this.player.setScale(1.1);
     this.playDirectional('Idle', 0, false);
+
+    // Spawn 20 enemies coming out of the screen edges
+    this.spawnEdgeEnemies(20);
 
     this.setupInput();
     this.setupAnimationCallbacks();
@@ -222,6 +228,22 @@ export class GameScene extends Phaser.Scene {
 
     this.handleActionInputs();
     this.handleLocomotion(dt);
+
+    // 1. Compute crowd separation vectors for all enemies
+    for (const enemy of this.enemies) {
+      enemy.computeSeparation(this.enemies);
+    }
+
+    // 2. Update all enemies pursuing the player
+    for (const enemy of this.enemies) {
+      enemy.update(dt, this.player.x, this.player.y);
+    }
+
+    // 2.5D depth sorting based on ground feet position
+    this.player.setDepth(this.player.y);
+
+    // Check enemy attacks hitting player
+    this.checkEnemyAttackHit(dt);
   }
 
   // -----------------------------------------------------------------
@@ -328,6 +350,7 @@ export class GameScene extends Phaser.Scene {
       this.actionDir = this.currentAimDir;
       this.currentAction = 'attack';
       this.playDirectional('MeleeRun', this.currentAimDir, false);
+      this.scheduleAttackHitCheck(120);
       return;
     }
 
@@ -350,6 +373,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'attack';
     this.playDirectional(nextAnim, this.currentAimDir, false);
+    this.scheduleAttackHitCheck(130);
 
     this.comboResetTimer = this.time.delayedCall(1200, () => {
       this.attackComboStep = 0;
@@ -428,6 +452,134 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = actionState;
     this.playDirectional(animBase, this.currentAimDir, false);
+
+    if (
+      actionState === 'kick' ||
+      actionState === 'pummel' ||
+      animBase === 'MeleeSpin' ||
+      animBase === 'Special1' ||
+      animBase === 'Special2'
+    ) {
+      this.scheduleAttackHitCheck(140);
+    }
+  }
+
+  private scheduleAttackHitCheck(delayMs: number) {
+    this.time.delayedCall(delayMs, () => {
+      if (
+        this.currentAction === 'attack' ||
+        this.currentAction === 'kick' ||
+        this.currentAction === 'pummel' ||
+        this.currentAction === 'special1' ||
+        this.currentAction === 'special2'
+      ) {
+        this.checkPlayerAttackHit();
+      }
+    });
+  }
+
+  private spawnEdgeEnemies(count: number) {
+    const { width, height } = this.scale;
+    const margin = 80;
+
+    for (let i = 0; i < count; i++) {
+      // Distribute evenly across 4 edges: 0=Top, 1=Right, 2=Bottom, 3=Left
+      const edge = i % 4;
+      let startX = 0;
+      let startY = 0;
+
+      // Distance offset just outside visible frame so they stream in continuously
+      const depthOffset = Phaser.Math.Between(45, 160);
+
+      switch (edge) {
+        case 0: // Top
+          startX = Phaser.Math.Between(margin, width - margin);
+          startY = -depthOffset;
+          break;
+        case 1: // Right
+          startX = width + depthOffset;
+          startY = Phaser.Math.Between(margin, height - margin);
+          break;
+        case 2: // Bottom
+          startX = Phaser.Math.Between(margin, width - margin);
+          startY = height + depthOffset;
+          break;
+        case 3: // Left
+          startX = -depthOffset;
+          startY = Phaser.Math.Between(margin, height - margin);
+          break;
+      }
+
+      const championType = i % 2 === 0 ? 'Yi' : 'Zed';
+      const enemy = new Enemy(this, startX, startY, championType);
+      this.enemies.push(enemy);
+    }
+  }
+
+  private checkPlayerAttackHit() {
+    if (this.enemies.length === 0 || this.isDead) return;
+
+    for (const enemy of this.enemies) {
+      const dx = enemy.x - this.player.x;
+      const dy = enemy.y - this.player.y;
+      const dist = Math.hypot(dx, dy);
+
+      // Player melee attack range
+      if (dist > 95) continue;
+
+      // Check angle relative to player facing direction
+      const angleToEnemy = Math.atan2(dy, dx);
+      let degToEnemy = Phaser.Math.RadToDeg(angleToEnemy);
+      if (degToEnemy < 0) degToEnemy += 360;
+
+      const playerFacingDeg = this.currentAimDir * 45;
+      let diff = Math.abs(degToEnemy - playerFacingDeg);
+      if (diff > 180) diff = 360 - diff;
+
+      // 360-degree hit for spinning attacks, 85-degree forward cone for standard strikes
+      const isSpin =
+        this.player.anims.currentAnim?.key.startsWith('MeleeSpin_') ||
+        this.player.anims.currentAnim?.key.startsWith('Special1_');
+      if (isSpin || diff < 85) {
+        enemy.takeDamage(this.player.x, this.player.y);
+      }
+    }
+  }
+
+  private checkEnemyAttackHit(dt: number) {
+    if (this.enemyHitCooldown > 0) {
+      this.enemyHitCooldown -= dt;
+      return;
+    }
+
+    if (this.enemies.length === 0 || this.isDead) return;
+
+    for (const enemy of this.enemies) {
+      if (!enemy.isPerformingAttack()) continue;
+
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+      if (dist > 75) continue;
+
+      // Invulnerable during rolls or flips
+      if (this.currentAction === 'roll' || this.currentAction === 'flip') {
+        return;
+      }
+
+      // Shield block active: absorb impact and push back slightly
+      if (this.currentAction === 'block') {
+        const rad = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
+        this.player.x += Math.cos(rad) * 16;
+        this.player.y += Math.sin(rad) * 16;
+        this.clampToScreen();
+        this.enemyHitCooldown = 0.5;
+        return;
+      }
+
+      // Player takes damage
+      this.triggerHurt();
+      this.enemyHitCooldown = 0.8;
+      return;
+    }
   }
 
   // -----------------------------------------------------------------
