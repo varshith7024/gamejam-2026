@@ -45,6 +45,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   public attackCooldown = 0;
   private walkSpeed = 80;
   private hasEnteredArena = false;
+  private navRingDir = 0;
+  private navWptIdx = -1;
+  private floorCenter: { x: number; y: number };
 
   // Crowd separation
   private separationX = 0;
@@ -84,6 +87,8 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     scene.add.existing(this);
     this.setDepth(this.getFootY());
 
+    this.floorCenter = floorCenter;
+
     // Initial direction facing towards arena floor center
     const dx = floorCenter.x - x;
     const dy = floorCenter.y - y;
@@ -104,6 +109,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     }
 
     this.attackCooldown = Phaser.Math.FloatBetween(0.5, 2.0);
+
+    // If spawned on valid land, immediately mark as inside arena
+    const area = (scene as any).env?.area;
+    const rx = type === 'Zed' ? 16 : 10;
+    const ry = type === 'Zed' ? 8 : 5;
+    if (area && area.canStand(x, y, rx, ry)) {
+      this.hasEnteredArena = true;
+    }
 
     // Animation completion handling
     this.on(Phaser.Animations.Events.ANIMATION_COMPLETE, (anim: Phaser.Animations.Animation) => {
@@ -366,6 +379,63 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.attackCooldown -= dt;
     }
 
+    const rx = this.championType === 'Zed' ? 16 : 10;
+    const ry = this.championType === 'Zed' ? 8 : 5;
+
+    if (!this.hasEnteredArena) {
+      // -------------------------------------------------------------
+      // APPROACHING ARENA DOWN STAIRS / ENTRYWAY
+      // March down the solid staircase towards the arena floor center
+      // -------------------------------------------------------------
+      if (area && area.canStand(this.x, this.y, rx, ry)) {
+        this.hasEnteredArena = true;
+      } else {
+        this.isMoving = true;
+        this.currentAnimKey = this.config.locomotionAnim;
+
+        // Head directly down the staircase towards arena floor center
+        const tdx = this.floorCenter.x - this.x;
+        const tdy = this.floorCenter.y - this.y;
+        const dist = Math.hypot(tdx, tdy);
+
+        let vx = tdx / (dist || 1);
+        let vy = tdy / (dist || 1);
+
+        // Light lateral separation so stacked enemies stay on stone steps without overlapping
+        if (this.separationX !== 0 || this.separationY !== 0) {
+          const sepWeight = 0.35;
+          vx += this.separationX * sepWeight;
+          vy += this.separationY * sepWeight;
+          const len = Math.hypot(vx, vy);
+          if (len > 0.001) {
+            vx /= len;
+            vy /= len;
+          }
+        }
+
+        const stepX = vx * this.walkSpeed * dt;
+        const stepY = vy * this.walkSpeed * dt * 0.85;
+
+        this.x += stepX;
+        this.y += stepY;
+
+        // Check if this step brought the enemy inside the walkable arena
+        if (area && area.canStand(this.x, this.y, rx, ry)) {
+          this.hasEnteredArena = true;
+        }
+
+        const moveDir = this.computeDirection(vx, vy);
+        const animKey = `${this.championType}_${this.config.locomotionAnim}_${moveDir}`;
+        if (moveDir !== this.currentDir || this.anims.currentAnim?.key !== animKey) {
+          this.currentDir = moveDir;
+          this.playChampionAnim(this.config.locomotionAnim, this.currentDir);
+        }
+
+        this.setDepth(this.getFootY());
+        return;
+      }
+    }
+
     if (playerX !== undefined && playerY !== undefined) {
       const dx = playerX - this.x;
       const dy = playerY - this.y;
@@ -377,13 +447,13 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       } else if (
         distToPlayer <= this.attackRange &&
         this.attackCooldown <= 0 &&
-        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 10))
+        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 8))
       ) {
         // Close enough and clear line of sight: stop and execute an attack
         this.triggerAttack(playerX, playerY);
       } else if (
         distToPlayer <= this.stopDistance &&
-        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 10))
+        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 8))
       ) {
         // In striking range! Hold ground, face the player, wait for attack cooldown
         this.isMoving = false;
@@ -398,16 +468,26 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         this.isMoving = true;
         this.currentAnimKey = this.config.locomotionAnim;
 
-        const rx = this.championType === 'Zed' ? 16 : 10;
-        const ry = this.championType === 'Zed' ? 8 : 5;
-
         // Steer towards player: direct pursuit if line of sight is clear, or navigate around obstacles
         let targetX = playerX;
         let targetY = playerY;
-        if (area && this.hasEnteredArena) {
-          const steer = area.getSteeringTarget(this.x, this.y, playerX, playerY, rx);
+        if (area) {
+          const steer = area.getSteeringTarget(
+            this.x,
+            this.y,
+            playerX,
+            playerY,
+            10,
+            this.navRingDir,
+            this.navWptIdx,
+          );
           targetX = steer.x;
           targetY = steer.y;
+          this.navRingDir = steer.dir;
+          this.navWptIdx = steer.wptIdx;
+        } else {
+          this.navRingDir = 0;
+          this.navWptIdx = -1;
         }
 
         const tdx = targetX - this.x;
@@ -434,20 +514,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         const stepY = vy * this.walkSpeed * dt * 0.85;
 
         if (area) {
-          if (!this.hasEnteredArena) {
-            if (area.canStand(this.x, this.y, rx, ry)) {
-              this.hasEnteredArena = true;
-            }
-          }
-
-          if (this.hasEnteredArena) {
-            const p = area.move(this.x, this.y, stepX, stepY, rx, ry);
-            this.x = p.x;
-            this.y = p.y;
-          } else {
-            this.x += stepX;
-            this.y += stepY;
-          }
+          const p = area.move(this.x, this.y, stepX, stepY, rx, ry);
+          this.x = p.x;
+          this.y = p.y;
         } else {
           this.x += stepX;
           this.y += stepY;

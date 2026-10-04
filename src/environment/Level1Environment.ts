@@ -91,7 +91,7 @@ export class Level1Environment {
       img.setDepth(depth);
       if (!p.flat) this.sortLines.push({ x0: p.x - 30, x1: p.x + 30, y: p.y });
 
-      // Prop blackpoint screen overlay: white silhouette screened over the prop (brightening)
+      // Prop blackpoint screen overlay: warm daylight screen over prop (brightening without washing out)
       const overlay = this.scene.add
         .image(p.x, p.y, propKey(this.level, p.key))
         .setOrigin(0.5, 0.86)
@@ -147,7 +147,7 @@ export class Level1Environment {
         y: o.sortY,
       });
 
-      // Occluder blackpoint screen overlay
+      // Occluder blackpoint screen overlay: warm daylight screen over occluder
       const occOverlay = this.scene.add
         .image(o.x, o.y, o.key)
         .setOrigin(0, 0)
