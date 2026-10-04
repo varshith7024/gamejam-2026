@@ -84,12 +84,12 @@ export const LEVEL1: LevelData = {
    * flat = ground decal that is always drawn under the player.
    */
   props: [
-    { key: 'pillar_tall', x: 480, y: 505, scale: 0.5 },
-    { key: 'pillar_broken', x: 1250, y: 365, scale: 0.5 },
-    { key: 'statue_small', x: 1030, y: 312, scale: 0.5 },
-    { key: 'ruin_pile', x: 625, y: 345, scale: 0.45 },
-    { key: 'brazier_ruin', x: 905, y: 700, scale: 0.4 },
-    { key: 'pedestal_block', x: 1000, y: 585, scale: 0.4 },
+    { key: 'pillar_tall', x: 480, y: 505, scale: 0.5, footprint: [24, 12] },
+    { key: 'pillar_broken', x: 1250, y: 365, scale: 0.5, footprint: [22, 11] },
+    { key: 'statue_small', x: 1030, y: 312, scale: 0.5, footprint: [24, 12] },
+    { key: 'ruin_pile', x: 625, y: 345, scale: 0.45, footprint: [52, 20] },
+    { key: 'brazier_ruin', x: 905, y: 700, scale: 0.4, footprint: [42, 16] },
+    { key: 'pedestal_block', x: 1000, y: 585, scale: 0.4, footprint: [24, 12] },
     { key: 'rubble_scatter', x: 600, y: 588, scale: 0.5, flat: true },
   ] as {
     key: string;
