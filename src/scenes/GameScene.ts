@@ -872,7 +872,7 @@ export class GameScene extends Phaser.Scene {
       this.waveTimerEvents.push(t);
     }
 
-    // Spawn 6 Zeds at 5s in 6 different spaced locations, plus Enemy3!
+    // Spawn 6 Zeds at 5s in 6 different spaced locations
     const tBoss = this.time.delayedCall(5000, () => {
       const zedOffsets = [-35, 35, -35, 35, -35, 35];
       for (let j = 0; j < 6; j++) {
@@ -880,8 +880,11 @@ export class GameScene extends Phaser.Scene {
         const zedAngle = (j * (Math.PI * 2)) / 6 + 0.35;
         this.spawnEnemyAtAngle(this.level.roster.heavy, zedAngle, zedOffsets[j]);
       }
+    });
+    this.waveTimerEvents.push(tBoss);
 
-      // Spawn Enemy3 in final wave (2 in Level 1, 4 in Level 2)
+    // Spawn Enemy3 5 seconds after Zeds have spawned (at t = 10s)
+    const tEnemy3 = this.time.delayedCall(10000, () => {
       for (let e = 0; e < enemy3Count; e++) {
         this.wavePendingSpawns--;
         const eAngle = (e * (Math.PI * 2)) / enemy3Count + 0.2;
@@ -889,7 +892,7 @@ export class GameScene extends Phaser.Scene {
         this.spawnEnemyAtAngle('Enemy3', eAngle, eOffset);
       }
     });
-    this.waveTimerEvents.push(tBoss);
+    this.waveTimerEvents.push(tEnemy3);
   }
 
   private onEnemyDefeated(enemy: Enemy, source: 'normal' | 'X' | 'U' = 'normal') {
@@ -1159,30 +1162,33 @@ export class GameScene extends Phaser.Scene {
       if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0) {
         // All 9 Yis defeated -> spawn 2 Zeds (spaced out)
         this.wavePhase = 1;
-        this.time.delayedCall(1200, () => {
-          this.waveGroupEnemies = [];
+        this.waveGroupEnemies = [];
+        this.wavePendingSpawns = this.level.id === 'level2' ? 4 : 2;
+
+        const tZeds = this.time.delayedCall(1200, () => {
+          this.wavePendingSpawns -= 2;
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.4, -45);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 1.4, 45);
+
+          if (this.level.id === 'level2') {
+            // In Level 2: spawn 2 Enemy3 5 seconds after Zeds have spawned
+            const tEnemy3 = this.time.delayedCall(5000, () => {
+              this.wavePendingSpawns -= 2;
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 0.35, -40);
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 1.35, 40);
+            });
+            this.waveTimerEvents.push(tEnemy3);
+          }
         });
-      } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
-        if (this.level.id === 'level2') {
-          // In Level 2: add two Enemy3 after every wave
-          this.wavePhase = 2;
-          this.time.delayedCall(1200, () => {
-            this.waveGroupEnemies = [];
-            this.spawnEnemyAtAngle('Enemy3', Math.PI * 0.35, -40);
-            this.spawnEnemyAtAngle('Enemy3', Math.PI * 1.35, 40);
-          });
-        } else {
-          // Zed defeated -> Wave 1 Complete!
-          this.wavePhase = 2;
-          this.time.delayedCall(2500, () => {
-            this.startWave(2);
-          });
-        }
-      } else if (this.wavePhase === 2 && this.level.id === 'level2' && this.waveGroupEnemies.every((e) => e.isDead)) {
-        // Enemy3 after Wave 1 defeated -> Wave 1 Complete!
-        this.wavePhase = 3;
+        this.waveTimerEvents.push(tZeds);
+      } else if (
+        this.wavePhase === 1 &&
+        this.wavePendingSpawns === 0 &&
+        this.waveGroupEnemies.length > 0 &&
+        this.waveGroupEnemies.every((e) => e.isDead)
+      ) {
+        // Zeds (and Enemy3 in Level 2) defeated -> Wave 1 Complete!
+        this.wavePhase = 2;
         this.time.delayedCall(2500, () => {
           this.startWave(2);
         });
@@ -1195,32 +1201,35 @@ export class GameScene extends Phaser.Scene {
       if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0) {
         // All 12 Yis defeated -> spawn 4 Zeds at spaced locations
         this.wavePhase = 1;
-        this.time.delayedCall(1200, () => {
-          this.waveGroupEnemies = [];
+        this.waveGroupEnemies = [];
+        this.wavePendingSpawns = this.level.id === 'level2' ? 6 : 4;
+
+        const tZeds = this.time.delayedCall(1200, () => {
+          this.wavePendingSpawns -= 4;
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.25, -40);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.75, 40);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 1.25, -40);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 1.75, 40);
+
+          if (this.level.id === 'level2') {
+            // In Level 2: spawn 2 Enemy3 5 seconds after Zeds have spawned
+            const tEnemy3 = this.time.delayedCall(5000, () => {
+              this.wavePendingSpawns -= 2;
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 0.65, -40);
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 1.65, 40);
+            });
+            this.waveTimerEvents.push(tEnemy3);
+          }
         });
-      } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
-        if (this.level.id === 'level2') {
-          // In Level 2: add two Enemy3 after every wave
-          this.wavePhase = 2;
-          this.time.delayedCall(1200, () => {
-            this.waveGroupEnemies = [];
-            this.spawnEnemyAtAngle('Enemy3', Math.PI * 0.65, -40);
-            this.spawnEnemyAtAngle('Enemy3', Math.PI * 1.65, 40);
-          });
-        } else {
-          // Both Zeds defeated -> Wave 2 Complete!
-          this.wavePhase = 2;
-          this.time.delayedCall(2500, () => {
-            this.startWave(3);
-          });
-        }
-      } else if (this.wavePhase === 2 && this.level.id === 'level2' && this.waveGroupEnemies.every((e) => e.isDead)) {
-        // Enemy3 after Wave 2 defeated -> Wave 2 Complete!
-        this.wavePhase = 3;
+        this.waveTimerEvents.push(tZeds);
+      } else if (
+        this.wavePhase === 1 &&
+        this.wavePendingSpawns === 0 &&
+        this.waveGroupEnemies.length > 0 &&
+        this.waveGroupEnemies.every((e) => e.isDead)
+      ) {
+        // Zeds (and Enemy3 in Level 2) defeated -> Wave 2 Complete!
+        this.wavePhase = 2;
         this.time.delayedCall(2500, () => {
           this.startWave(3);
         });
@@ -1230,7 +1239,12 @@ export class GameScene extends Phaser.Scene {
 
     // Wave 3 Progression
     if (this.currentWave === 3) {
-      if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0 && this.waveGroupEnemies.every((e) => e.isDead)) {
+      if (
+        this.wavePhase === 0 &&
+        this.wavePendingSpawns === 0 &&
+        this.waveGroupEnemies.length > 0 &&
+        this.waveGroupEnemies.every((e) => e.isDead)
+      ) {
         this.wavePhase = 1;
         if (this.cornerWaveText) {
           this.cornerWaveText.setText('VICTORY');
