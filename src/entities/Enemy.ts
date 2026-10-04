@@ -4,12 +4,16 @@ import {
   ChampionType,
   YI_CONFIG,
   ZED_CONFIG,
+  ENEMY3_CONFIG,
 } from '../config/championAnimations';
 import { LEVEL1 } from '../environment/level1Data';
 import type { WalkableArea } from '../environment/Collision';
 import { DEPTH } from '../environment/Level1Environment';
 
 export class Enemy extends Phaser.GameObjects.Sprite {
+  // Global lock ensuring only one Enemy3 teleports at a time
+  public static currentTeleporter: Enemy | null = null;
+
   public championType: ChampionType;
   private config: ChampionConfig;
 
@@ -21,11 +25,17 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   public isStumbling = false;
   private stumbleTimer = 0;
 
+  // Enemy3 specific state machine
+  public enemy3State: 'spawning' | 'disappearing' | 'hidden' | 'appearing' | 'attacking' | 'idle_pause' = 'spawning';
+  private enemy3Timer = 0;
+  private enemy3DriftVx = 0;
+  private enemy3DriftVy = 0;
+
   // AI & Movement State
   private isMoving = true;
   private isActing = false;
 
-  // Clockwise 8 directions: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
+  // Clockwise 8 directions: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW (for Yi/Zed), or stdDir 0..7 (for Enemy3)
   private currentDir = 4; // Starts facing South
   private currentAnimKey = '';
 
@@ -54,17 +64,17 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     type: ChampionType = 'Yi',
     floorCenter: { x: number; y: number } = LEVEL1.floorCenter,
   ) {
-    const config = type === 'Yi' ? YI_CONFIG : ZED_CONFIG;
+    const config = type === 'Enemy3' ? ENEMY3_CONFIG : type === 'Zed' ? ZED_CONFIG : YI_CONFIG;
     super(scene, x, y, `${type}_${config.locomotionAnim}`, 0);
 
     this.championType = type;
     this.config = config;
     this.maxHp = config.maxHp;
     this.currentHp = this.maxHp;
-    this.attackRange = type === 'Zed' ? 68 : 50;
-    this.stopDistance = type === 'Zed' ? 52 : 36;
-    this.attackDamage = type === 'Zed' ? 5 : 1;
-    this.attackCooldownDuration = type === 'Zed' ? 0.75 : 1.0;
+    this.attackRange = type === 'Enemy3' ? 44 : type === 'Zed' ? 68 : 50;
+    this.stopDistance = type === 'Enemy3' ? 28 : type === 'Zed' ? 52 : 36;
+    this.attackDamage = type === 'Enemy3' ? 5 : type === 'Zed' ? 5 : 1;
+    this.attackCooldownDuration = type === 'Enemy3' ? 0.5 : type === 'Zed' ? 0.75 : 1.0;
     this.attackCooldown = this.attackCooldownDuration;
 
     this.walkSpeed = Phaser.Math.FloatBetween(
@@ -84,10 +94,19 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     const dy = floorCenter.y - y;
     this.currentDir = this.computeDirection(dx, dy);
 
-    // Start locomotion animation with desynchronized cycle
-    this.currentAnimKey = config.locomotionAnim;
-    this.playChampionAnim(config.locomotionAnim, this.currentDir);
-    this.anims.setProgress(Math.random());
+    if (type === 'Enemy3') {
+      // Enemy3 initially spawns at edge of map, then staggers slightly before disappearing
+      this.enemy3State = 'spawning';
+      this.currentAnimKey = 'idle';
+      this.enemy3Timer = Phaser.Math.FloatBetween(0.05, 0.45);
+      this.playChampionAnim('idle', this.currentDir);
+      this.anims.setProgress(Math.random());
+    } else {
+      // Start locomotion animation with desynchronized cycle
+      this.currentAnimKey = config.locomotionAnim;
+      this.playChampionAnim(config.locomotionAnim, this.currentDir);
+      this.anims.setProgress(Math.random());
+    }
 
     this.attackCooldown = Phaser.Math.FloatBetween(0.5, 2.0);
 
@@ -102,6 +121,32 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     // Animation completion handling
     this.on(Phaser.Animations.Events.ANIMATION_COMPLETE, (anim: Phaser.Animations.Animation) => {
       if (this.isDead) return;
+      if (this.championType === 'Enemy3') {
+        if (anim.key.includes('_disappear_')) {
+          this.setVisible(false);
+          this.enemy3State = 'hidden';
+          this.enemy3Timer = Phaser.Math.FloatBetween(0.25, 0.65); // Randomized teleport delay
+        } else if (anim.key.includes('_appear_')) {
+          this.enemy3State = 'attacking';
+          this.isActing = true;
+          this.playChampionAnim('attack', this.currentDir);
+        } else if (anim.key.includes('_attack_')) {
+          this.isActing = false;
+          this.setFlipX(false);
+          if (Enemy.currentTeleporter === this) {
+            Enemy.currentTeleporter = null;
+          }
+          this.enemy3State = 'idle_pause';
+          this.enemy3Timer = Phaser.Math.FloatBetween(0.4, 0.7); // Randomized ~0.5s idle
+          // Pick individual random drift velocity during idle pause so they move around individually
+          const driftAngle = Math.random() * Math.PI * 2;
+          const driftSpeed = Phaser.Math.FloatBetween(30, 60);
+          this.enemy3DriftVx = Math.cos(driftAngle) * driftSpeed;
+          this.enemy3DriftVy = Math.sin(driftAngle) * driftSpeed * 0.85;
+          this.playChampionAnim('idle', this.currentDir);
+        }
+        return;
+      }
       if (this.isStumbling) {
         // While stumbling, if get_hit finished, transition to idle stagger
         if (anim.key.includes('get_hit')) {
@@ -119,10 +164,11 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   // Calculate repulsion vector from nearby enemies so horde naturally fans out
   public computeSeparation(otherEnemies: Enemy[]) {
     if (this.isDead) return;
+    if (this.championType === 'Enemy3' && (this.enemy3State === 'hidden' || !this.visible)) return;
 
     this.separationX = 0;
     this.separationY = 0;
-    const minDist = this.championType === 'Zed' ? 52 : 36;
+    const minDist = this.championType === 'Zed' ? 52 : this.championType === 'Enemy3' ? 28 : 36;
 
     for (const other of otherEnemies) {
       if (other === this || other.isDead) continue;
@@ -139,11 +185,183 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   public getFootY(): number {
+    if (this.championType === 'Enemy3') {
+      return this.y + 27;
+    }
     return this.y + (this.championType === 'Zed' ? -7 : -8);
   }
 
-  public update(dt: number, playerX?: number, playerY?: number, area?: WalkableArea) {
+  public update(dt: number, playerX?: number, playerY?: number, area?: WalkableArea, playerAimDir?: number, otherEnemies?: Enemy[]) {
     if (this.isDead) return;
+
+    // Safety: clear dead/inactive teleporter reference
+    if (Enemy.currentTeleporter && (Enemy.currentTeleporter.isDead || !Enemy.currentTeleporter.active || !Enemy.currentTeleporter.scene)) {
+      Enemy.currentTeleporter = null;
+    }
+
+    // Enemy3 unique state machine
+    if (this.championType === 'Enemy3') {
+      if (this.isStumbling) {
+        this.stumbleTimer -= dt;
+        this.setDepth(this.getFootY());
+        if (this.stumbleTimer <= 0) {
+          this.isStumbling = false;
+          this.isActing = false;
+          if (Enemy.currentTeleporter === null || Enemy.currentTeleporter === this || Enemy.currentTeleporter.isDead) {
+            Enemy.currentTeleporter = this;
+            this.enemy3State = 'disappearing';
+            this.playChampionAnim('disappear', this.currentDir);
+          } else {
+            this.enemy3State = 'idle_pause';
+            this.enemy3Timer = Phaser.Math.FloatBetween(0.2, 0.5);
+            const driftAngle = Math.random() * Math.PI * 2;
+            const driftSpeed = Phaser.Math.FloatBetween(30, 60);
+            this.enemy3DriftVx = Math.cos(driftAngle) * driftSpeed;
+            this.enemy3DriftVy = Math.sin(driftAngle) * driftSpeed * 0.85;
+            this.playChampionAnim('idle', this.currentDir);
+          }
+        }
+        return;
+      }
+
+      if (playerX === undefined || playerY === undefined) return;
+
+      // Staggered initial spawn before disappearing
+      if (this.enemy3State === 'spawning') {
+        this.enemy3Timer -= dt;
+        if (this.enemy3Timer <= 0) {
+          if (Enemy.currentTeleporter === null || Enemy.currentTeleporter === this || Enemy.currentTeleporter.isDead) {
+            Enemy.currentTeleporter = this;
+            this.enemy3State = 'disappearing';
+            this.playChampionAnim('disappear', this.currentDir);
+          } else {
+            // Another Enemy3 is currently teleporting; wait a short while
+            this.enemy3Timer = 0.2;
+          }
+        }
+        this.setDepth(this.getFootY());
+        return;
+      }
+
+      if (this.enemy3State === 'hidden') {
+        this.enemy3Timer -= dt;
+        if (this.enemy3Timer <= 0) {
+          // Teleport behind or to the sides (flanks) of player with individual random placement
+          const aimDir = playerAimDir !== undefined ? playerAimDir : 2;
+          const faceRad = Phaser.Math.DegToRad(aimDir * 45);
+          const behindRad = faceRad + Math.PI;
+
+          let chosenX = playerX;
+          let chosenY = playerY;
+          let foundSafe = false;
+
+          // Find other active Enemy3 units to avoid overlapping
+          const otherActiveEnemy3 = otherEnemies
+            ? otherEnemies.filter(
+                (e) => e !== this && !e.isDead && e.championType === 'Enemy3' && e.enemy3State !== 'hidden' && e.visible,
+              )
+            : [];
+
+          // Try up to 18 randomized angle and distance candidates spanning both sides (flanks) and behind
+          for (let attempt = 0; attempt < 18; attempt++) {
+            // Uniformly sample between left flank (-90 deg), right flank (+90 deg), and behind (180 deg)
+            const zone = Phaser.Utils.Array.GetRandom(['left', 'right', 'behind']);
+            let ang = behindRad;
+            if (zone === 'left') {
+              ang = faceRad - Math.PI / 2 + Phaser.Math.FloatBetween(-0.4, 0.4);
+            } else if (zone === 'right') {
+              ang = faceRad + Math.PI / 2 + Phaser.Math.FloatBetween(-0.4, 0.4);
+            } else {
+              ang = behindRad + Phaser.Math.FloatBetween(-0.6, 0.6);
+            }
+
+            const randDist = Phaser.Math.FloatBetween(32, 52);
+            const tx = playerX + Math.cos(ang) * randDist;
+            const ty = playerY + Math.sin(ang) * randDist * 0.85;
+
+            // Ensure not too close to other Enemy3 units (minimum 24px distance)
+            const tooCloseToOther = otherActiveEnemy3.some(
+              (o) => Math.hypot(o.x - tx, (o.y - ty) / 0.85) < 24,
+            );
+            if (tooCloseToOther) continue;
+
+            if (!area || area.canStand(tx, ty, 8, 4)) {
+              chosenX = tx;
+              chosenY = ty;
+              foundSafe = true;
+              break;
+            }
+          }
+
+          if (!foundSafe) {
+            const zoneOffset = Phaser.Utils.Array.GetRandom([-Math.PI / 2, Math.PI / 2, Math.PI]);
+            const randAngle = faceRad + zoneOffset + Phaser.Math.FloatBetween(-0.3, 0.3);
+            const randDist = Phaser.Math.FloatBetween(28, 44);
+            if (area) {
+              const p = area.move(playerX, playerY, Math.cos(randAngle) * randDist, Math.sin(randAngle) * randDist * 0.85, 8, 4);
+              chosenX = p.x;
+              chosenY = p.y;
+            } else {
+              chosenX = playerX + Math.cos(randAngle) * randDist;
+              chosenY = playerY + Math.sin(randAngle) * randDist * 0.85;
+            }
+          }
+
+          this.x = chosenX;
+          this.y = chosenY;
+          this.setVisible(true);
+          this.clearTint();
+          this.setDepth(this.getFootY());
+
+          // Face player directly upon appearing
+          this.currentDir = this.computeDirection(playerX - this.x, playerY - this.y);
+          this.enemy3State = 'appearing';
+          this.playChampionAnim('appear', this.currentDir);
+        }
+      } else if (this.enemy3State === 'idle_pause') {
+        this.enemy3Timer -= dt;
+
+        // Individual random drift movement during idle pause
+        let vx = this.enemy3DriftVx * dt;
+        let vy = this.enemy3DriftVy * dt;
+
+        // Apply separation force from other enemies so they never stick together
+        if (this.separationX !== 0 || this.separationY !== 0) {
+          vx += this.separationX * 50 * dt;
+          vy += this.separationY * 50 * dt * 0.85;
+        }
+
+        if (area) {
+          const p = area.move(this.x, this.y, vx, vy, 8, 4);
+          this.x = p.x;
+          this.y = p.y;
+        } else {
+          this.x += vx;
+          this.y += vy;
+        }
+
+        const fDir = this.computeDirection(playerX - this.x, playerY - this.y);
+        if (fDir !== this.currentDir) {
+          this.currentDir = fDir;
+          this.playChampionAnim('idle', this.currentDir);
+        }
+
+        if (this.enemy3Timer <= 0) {
+          // Half a second passed -> disappear if teleporter lock is available!
+          if (Enemy.currentTeleporter === null || Enemy.currentTeleporter === this || Enemy.currentTeleporter.isDead) {
+            Enemy.currentTeleporter = this;
+            this.enemy3State = 'disappearing';
+            this.playChampionAnim('disappear', this.currentDir);
+          } else {
+            // Another Enemy3 is currently teleporting; wait a short while while continuing drift
+            this.enemy3Timer = 0.2;
+          }
+        }
+      }
+
+      this.setDepth(this.getFootY());
+      return;
+    }
 
     // Handle stumble timer after being hit
     if (this.isStumbling) {
@@ -361,6 +579,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     stunDuration?: number,
   ): boolean {
     if (this.isDead) return false;
+    if (this.championType === 'Enemy3' && (this.enemy3State === 'hidden' || !this.visible)) {
+      return false; // Cannot hit while hidden/teleporting
+    }
 
     this.currentHp -= damage;
 
@@ -380,17 +601,26 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     knockbackDist = 26,
     stunDuration?: number,
   ) {
+    if (this.championType === 'Enemy3' && Enemy.currentTeleporter === this) {
+      Enemy.currentTeleporter = null;
+    }
     this.isMoving = false;
     this.isActing = false;
     this.isStumbling = true;
-    // Zed stumble duration reset to 0.5s, Yi stumble duration is 0.75s, or custom stun duration (e.g. 1s for whirlwind)
-    this.stumbleTimer = stunDuration !== undefined ? stunDuration : (this.championType === 'Zed' ? 0.5 : 0.75);
+    this.stumbleTimer = stunDuration !== undefined
+      ? stunDuration
+      : (this.championType === 'Enemy3' ? 0.35 : this.championType === 'Zed' ? 0.5 : 0.75);
     this.attackCooldown = Math.max(this.attackCooldownDuration, this.stumbleTimer + 0.2);
 
     // Face the attacker
     this.currentDir = this.computeDirection(fromX - this.x, fromY - this.y);
-    this.currentAnimKey = 'get_hit';
-    this.playChampionAnim('get_hit', this.currentDir);
+    if (this.championType === 'Enemy3') {
+      this.currentAnimKey = 'idle';
+      this.playChampionAnim('idle', this.currentDir);
+    } else {
+      this.currentAnimKey = 'get_hit';
+      this.playChampionAnim('get_hit', this.currentDir);
+    }
 
     // Knockback recoil away from player
     const rad = Math.atan2(this.y - fromY, this.x - fromX);
@@ -415,7 +645,17 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     });
   }
 
+  public override destroy(fromScene?: boolean) {
+    if (Enemy.currentTeleporter === this) {
+      Enemy.currentTeleporter = null;
+    }
+    super.destroy(fromScene);
+  }
+
   public die(fromX: number, fromY: number, knockbackDist = 26) {
+    if (Enemy.currentTeleporter === this) {
+      Enemy.currentTeleporter = null;
+    }
     this.isDead = true;
     this.isDying = true;
     this.isMoving = false;
@@ -442,24 +682,41 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.clearTint();
     });
 
-    // When dying, play death animation, then slowly fade them out after 2 seconds
-    this.scene.time.delayedCall(2000, () => {
-      this.scene.tweens.add({
-        targets: this,
-        alpha: 0,
-        duration: 1500,
-        ease: 'Quad.easeOut',
-        onComplete: () => {
-          this.destroy();
-        },
+    if (this.championType === 'Enemy3') {
+      // Enemy3 fades out after disappear/death animation
+      this.scene.time.delayedCall(800, () => {
+        this.scene.tweens.add({
+          targets: this,
+          alpha: 0,
+          duration: 600,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            this.destroy();
+          },
+        });
       });
-    });
+    } else {
+      // When dying, play death animation, then slowly fade them out after 2 seconds
+      this.scene.time.delayedCall(2000, () => {
+        this.scene.tweens.add({
+          targets: this,
+          alpha: 0,
+          duration: 1500,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            this.destroy();
+          },
+        });
+      });
+    }
   }
 
   public isPerformingAttack(): boolean {
+    if (this.isDead || this.isStumbling) return false;
+    if (this.championType === 'Enemy3') {
+      return this.enemy3State === 'attacking';
+    }
     return (
-      !this.isDead &&
-      !this.isStumbling &&
       this.isActing &&
       (this.currentAnimKey === 'attack' || this.currentAnimKey === 'attack_1')
     );
@@ -468,6 +725,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private playChampionAnim(baseKey: string, dir: number) {
     const key = `${this.championType}_${baseKey}_${dir}`;
     if (!this.scene.anims.exists(key)) return;
+
+    if (this.championType === 'Enemy3') {
+      if (baseKey === 'attack' && dir === 3) {
+        this.setFlipX(true);
+      } else {
+        this.setFlipX(false);
+      }
+    }
 
     const isSameBase = this.currentAnimKey === baseKey;
     const progress = isSameBase && this.anims.isPlaying ? this.anims.getProgress() : 0;
@@ -480,13 +745,15 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   public getCollisionRadius(): number {
+    if (this.championType === 'Enemy3') return 10;
     return this.championType === 'Zed' ? 24 : 14;
   }
 
   public pushBody(pushX: number, pushY: number, area?: WalkableArea) {
     if (this.isDead) return;
-    const rx = this.championType === 'Zed' ? 16 : 10;
-    const ry = this.championType === 'Zed' ? 8 : 5;
+    if (this.championType === 'Enemy3' && (this.enemy3State === 'hidden' || !this.visible)) return;
+    const rx = this.championType === 'Zed' ? 16 : this.championType === 'Enemy3' ? 8 : 10;
+    const ry = this.championType === 'Zed' ? 8 : this.championType === 'Enemy3' ? 4 : 5;
     if (area && this.hasEnteredArena) {
       const p = area.move(this.x, this.y, pushX, pushY, rx, ry);
       this.x = p.x;
@@ -515,6 +782,10 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     // Standard Math.atan2 sector: 0=East, 1=SE, 2=South, 3=SW, 4=West, 5=NW, 6=North, 7=NE
     const stdDir = Math.floor(((deg + 22.5) % 360) / 45);
+
+    if (this.championType === 'Enemy3') {
+      return stdDir;
+    }
 
     // Map: East(0)->2, SE(1)->3, South(2)->4, SW(3)->5, West(4)->6, NW(5)->7, North(6)->0, NE(7)->1
     return (stdDir + 2) % 8;

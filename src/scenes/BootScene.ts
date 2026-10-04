@@ -6,7 +6,7 @@ import {
   FRAMES_PER_DIR,
   NUM_DIRECTIONS,
 } from '../config/animations';
-import { YI_CONFIG, ZED_CONFIG, ORB_CONFIG } from '../config/championAnimations';
+import { YI_CONFIG, ZED_CONFIG, ORB_CONFIG, ENEMY3_CONFIG } from '../config/championAnimations';
 import { Level1Environment } from '../environment/Level1Environment';
 import { LEVEL1 } from '../environment/level1Data';
 import { LEVEL2 } from '../environment/level2Data';
@@ -51,6 +51,15 @@ export class BootScene extends Phaser.Scene {
     // Preload Zed animations
     for (const anim of ZED_CONFIG.animations) {
       this.load.spritesheet(`Zed_${anim.key}`, anim.file, {
+        frameWidth: anim.frameWidth,
+        frameHeight: anim.frameHeight,
+        endFrame: anim.frames * anim.directions - 1,
+      });
+    }
+
+    // Preload Enemy3 animations
+    for (const anim of ENEMY3_CONFIG.animations) {
+      this.load.spritesheet(`Enemy3_${anim.key}`, anim.file, {
         frameWidth: anim.frameWidth,
         frameHeight: anim.frameHeight,
         endFrame: anim.frames * anim.directions - 1,
@@ -139,6 +148,98 @@ export class BootScene extends Phaser.Scene {
           }),
           frameRate: ORB_CONFIG.fps,
           repeat: ORB_CONFIG.repeat,
+        });
+      }
+    }
+
+    // Filter nearest on Enemy3 textures
+    for (const key of ['Enemy3_idle', 'Enemy3_attack', 'Enemy3_disappear']) {
+      if (this.textures.exists(key)) {
+        this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+    }
+
+    // Register directional Enemy3 animations
+    // User direction specifications:
+    // for idle: rows are South(0), South-East(1), North-East(2), North-West(3), North(4), West(5), East(6), South-West(7)
+    // for attack: rows are South(0), South-East(1), North-East(2), North-West(3), North(4), West(5), East(6) (no SW row in sheet)
+    // for disappear: rows are South(0), East(1), North-East(2), North-West(3), North(4), West(5), South-East(6), South-West(7)
+    // Standard game engine directions: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE
+    const ENEMY3_IDLE_ROWS = [6, 1, 0, 7, 5, 3, 4, 2];
+    const ENEMY3_ATTACK_ROWS = [6, 1, 0, 1, 5, 3, 4, 2]; // SW (3) maps to row 1 (SE) with flipX
+    const ENEMY3_DISAPPEAR_ROWS = [1, 6, 0, 7, 5, 3, 4, 2];
+
+    for (let stdDir = 0; stdDir < 8; stdDir++) {
+      // 1. Idle (8 frames per row)
+      const idleRow = ENEMY3_IDLE_ROWS[stdDir];
+      const idleKey = `Enemy3_idle_${stdDir}`;
+      if (!this.anims.exists(idleKey)) {
+        this.anims.create({
+          key: idleKey,
+          frames: this.anims.generateFrameNumbers('Enemy3_idle', {
+            start: idleRow * 8,
+            end: idleRow * 8 + 7,
+          }),
+          frameRate: 8,
+          repeat: -1,
+        });
+      }
+
+      // 2. Attack (9 frames per row)
+      const attackRow = ENEMY3_ATTACK_ROWS[stdDir];
+      const attackKey = `Enemy3_attack_${stdDir}`;
+      if (!this.anims.exists(attackKey)) {
+        this.anims.create({
+          key: attackKey,
+          frames: this.anims.generateFrameNumbers('Enemy3_attack', {
+            start: attackRow * 9,
+            end: attackRow * 9 + 8,
+          }),
+          frameRate: 16,
+          repeat: 0,
+        });
+      }
+
+      // 3. Disappear (frames 0 to 4 of disappear row)
+      const disRow = ENEMY3_DISAPPEAR_ROWS[stdDir];
+      const disKey = `Enemy3_disappear_${stdDir}`;
+      if (!this.anims.exists(disKey)) {
+        this.anims.create({
+          key: disKey,
+          frames: this.anims.generateFrameNumbers('Enemy3_disappear', {
+            start: disRow * 8,
+            end: disRow * 8 + 4,
+          }),
+          frameRate: 10,
+          repeat: 0,
+        });
+      }
+
+      // 4. Appear (frames 4 to 7 of disappear row)
+      const appKey = `Enemy3_appear_${stdDir}`;
+      if (!this.anims.exists(appKey)) {
+        this.anims.create({
+          key: appKey,
+          frames: this.anims.generateFrameNumbers('Enemy3_disappear', {
+            start: disRow * 8 + 4,
+            end: disRow * 8 + 7,
+          }),
+          frameRate: 10,
+          repeat: 0,
+        });
+      }
+
+      // 5. Die (full disappear row frames 0 to 7)
+      const dieKey = `Enemy3_die_${stdDir}`;
+      if (!this.anims.exists(dieKey)) {
+        this.anims.create({
+          key: dieKey,
+          frames: this.anims.generateFrameNumbers('Enemy3_disappear', {
+            start: disRow * 8,
+            end: disRow * 8 + 7,
+          }),
+          frameRate: 10,
+          repeat: 0,
         });
       }
     }

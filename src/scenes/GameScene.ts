@@ -250,6 +250,7 @@ export class GameScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
 
     // Reset combat and wave state
+    Enemy.currentTeleporter = null;
     this.enemies = [];
     this.waveGroupEnemies = [];
     this.waveTimerEvents = [];
@@ -771,9 +772,11 @@ export class GameScene extends Phaser.Scene {
       x = best.x + Math.cos(angleFromCenter) * depthOffset + Math.cos(perpAngle) * perpOffset + Phaser.Math.Between(-2, 2);
       y = best.y + Math.sin(angleFromCenter) * depthOffset + Math.sin(perpAngle) * perpOffset + Phaser.Math.Between(-2, 2);
     } else {
-      const dist = 360;
-      x = fc.x + Math.cos(angleRad) * dist;
-      y = fc.y + Math.sin(angleRad) * (dist * 0.65);
+      // Default (Level 1): a ring around the floor centre
+      // For Enemy3 in Level 1, spawn near the visible perimeter of the arena so player sees him appear and disappear
+      const dist = type === 'Enemy3' ? 520 : 850;
+      x = fc.x + Math.cos(angleRad) * dist + Math.cos(perpAngle) * offsetDist;
+      y = fc.y + Math.sin(angleRad) * (dist * 0.7) + Math.sin(perpAngle) * (offsetDist * 0.7);
     }
 
     const enemy = new Enemy(this, x, y, type, fc);
@@ -783,6 +786,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startWave(waveNum: number) {
+    Enemy.currentTeleporter = null;
     this.currentWave = waveNum;
     this.wavePhase = 0;
     this.waveGroupEnemies = [];
@@ -854,9 +858,13 @@ export class GameScene extends Phaser.Scene {
     this.waveTimerEvents.push(t);
   }
 
-  // Wave 3: 3 Yis every second for 5 seconds (15 Yis total), then 6 Zeds at 5s (21 enemies total), all spaced out
+  // Wave 3: 3 Yis every second for 5 seconds (15 Yis total), then 6 Zeds at 5s, and Enemy3!
+  // In Level 1: 2 Enemy3 in the final wave.
+  // In Level 2: 2 + 2 extra = 4 Enemy3 in the final wave.
   private startWave3() {
-    this.wavePendingSpawns = 21;
+    const isLevel2 = this.level.id === 'level2';
+    const enemy3Count = isLevel2 ? 4 : 2;
+    this.wavePendingSpawns = 21 + enemy3Count;
     const offsets = [-50, 0, 50];
     const angleDeltas = [-0.18, 0, 0.18];
 
@@ -882,6 +890,17 @@ export class GameScene extends Phaser.Scene {
       }
     });
     this.waveTimerEvents.push(tBoss);
+
+    // Spawn Enemy3 5 seconds after Zeds have spawned (at t = 10s)
+    const tEnemy3 = this.time.delayedCall(10000, () => {
+      for (let e = 0; e < enemy3Count; e++) {
+        this.wavePendingSpawns--;
+        const eAngle = (e * (Math.PI * 2)) / enemy3Count + 0.2;
+        const eOffset = e % 2 === 0 ? -45 : 45;
+        this.spawnEnemyAtAngle('Enemy3', eAngle, eOffset);
+      }
+    });
+    this.waveTimerEvents.push(tEnemy3);
   }
 
   private onEnemyDefeated(enemy: Enemy, source: 'normal' | 'X' | 'U' = 'normal') {
@@ -899,7 +918,7 @@ export class GameScene extends Phaser.Scene {
       this.pointsTowardsU += pointsEarned;
     }
 
-    // Spawn kill effect: motes for Yi, spirits for Zed
+    // Spawn kill effect: motes for Yi, spirits for Zed, purple spirit for Enemy3
     this.spawnEnemyDefeatEffect(enemy);
 
     // Brighten the background and level props: increase black point by 5% (0.05) per enemy defeated, capped at 35% (0.35)
@@ -912,9 +931,55 @@ export class GameScene extends Phaser.Scene {
   private spawnEnemyDefeatEffect(enemy: Enemy) {
     const x = enemy.x;
     const y = enemy.y;
+    const isEnemy3 = enemy.championType === 'Enemy3';
     const isYi = enemy.championType === 'Yi';
 
-    if (isYi) {
+    if (isEnemy3) {
+      // Enemy3 defeat effect: dark ethereal purple swirling spirit wisps
+      const spiritsKey = Atmosphere.key(this.level, 'spirits');
+      if (!this.textures.exists(spiritsKey)) return;
+
+      const mainSpirit = this.add
+        .image(x, y - 16, spiritsKey)
+        .setScale(0.14)
+        .setTint(0x9333ea) // Glowing purple
+        .setAlpha(0.75)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(y + 25);
+
+      this.tweens.add({
+        targets: mainSpirit,
+        x: x + Phaser.Math.Between(-10, 10),
+        y: y - 50,
+        scaleX: 0.28,
+        scaleY: 0.28,
+        alpha: 0,
+        duration: 1200,
+        ease: 'Cubic.easeOut',
+        onComplete: () => mainSpirit.destroy(),
+      });
+
+      const sideSpirit = this.add
+        .image(x + 6, y - 12, spiritsKey)
+        .setScale(0.10)
+        .setTint(0xc084fc) // Light violet
+        .setAlpha(0.55)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(y + 24);
+
+      this.tweens.add({
+        targets: sideSpirit,
+        x: x + Phaser.Math.Between(-12, 12),
+        y: y - 42,
+        scaleX: 0.20,
+        scaleY: 0.20,
+        alpha: 0,
+        duration: 1350,
+        delay: 80,
+        ease: 'Sine.easeOut',
+        onComplete: () => sideSpirit.destroy(),
+      });
+    } else if (isYi) {
       // Yi defeat effect: subtle luminous motes dissipating upward
       const motesKey = Atmosphere.key(this.level, 'motes');
       if (!this.textures.exists(motesKey)) return;
@@ -1105,13 +1170,32 @@ export class GameScene extends Phaser.Scene {
       if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0) {
         // All 9 Yis defeated -> spawn 2 Zeds (spaced out)
         this.wavePhase = 1;
-        this.time.delayedCall(1200, () => {
-          this.waveGroupEnemies = [];
+        this.waveGroupEnemies = [];
+        this.wavePendingSpawns = this.level.id === 'level2' ? 4 : 2;
+
+        const tZeds = this.time.delayedCall(1200, () => {
+          this.wavePendingSpawns -= 2;
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.4, -45);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 1.4, 45);
+
+          if (this.level.id === 'level2') {
+            // In Level 2: spawn 2 Enemy3 5 seconds after Zeds have spawned
+            const tEnemy3 = this.time.delayedCall(5000, () => {
+              this.wavePendingSpawns -= 2;
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 0.35, -40);
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 1.35, 40);
+            });
+            this.waveTimerEvents.push(tEnemy3);
+          }
         });
-      } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
-        // Zed defeated -> Wave 1 Complete!
+        this.waveTimerEvents.push(tZeds);
+      } else if (
+        this.wavePhase === 1 &&
+        this.wavePendingSpawns === 0 &&
+        this.waveGroupEnemies.length > 0 &&
+        this.waveGroupEnemies.every((e) => e.isDead)
+      ) {
+        // Zeds (and Enemy3 in Level 2) defeated -> Wave 1 Complete!
         this.wavePhase = 2;
         this.time.delayedCall(2500, () => {
           this.startWave(2);
@@ -1125,15 +1209,34 @@ export class GameScene extends Phaser.Scene {
       if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0) {
         // All 12 Yis defeated -> spawn 4 Zeds at spaced locations
         this.wavePhase = 1;
-        this.time.delayedCall(1200, () => {
-          this.waveGroupEnemies = [];
+        this.waveGroupEnemies = [];
+        this.wavePendingSpawns = this.level.id === 'level2' ? 6 : 4;
+
+        const tZeds = this.time.delayedCall(1200, () => {
+          this.wavePendingSpawns -= 4;
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.25, -40);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.75, 40);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 1.25, -40);
           this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 1.75, 40);
+
+          if (this.level.id === 'level2') {
+            // In Level 2: spawn 2 Enemy3 5 seconds after Zeds have spawned
+            const tEnemy3 = this.time.delayedCall(5000, () => {
+              this.wavePendingSpawns -= 2;
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 0.65, -40);
+              this.spawnEnemyAtAngle('Enemy3', Math.PI * 1.65, 40);
+            });
+            this.waveTimerEvents.push(tEnemy3);
+          }
         });
-      } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
-        // Both Zeds defeated -> Wave 2 Complete!
+        this.waveTimerEvents.push(tZeds);
+      } else if (
+        this.wavePhase === 1 &&
+        this.wavePendingSpawns === 0 &&
+        this.waveGroupEnemies.length > 0 &&
+        this.waveGroupEnemies.every((e) => e.isDead)
+      ) {
+        // Zeds (and Enemy3 in Level 2) defeated -> Wave 2 Complete!
         this.wavePhase = 2;
         this.time.delayedCall(2500, () => {
           this.startWave(3);
@@ -1144,7 +1247,12 @@ export class GameScene extends Phaser.Scene {
 
     // Wave 3 Progression
     if (this.currentWave === 3) {
-      if (this.wavePhase === 0 && this.wavePendingSpawns === 0 && activeInGroup.length === 0 && this.waveGroupEnemies.every((e) => e.isDead)) {
+      if (
+        this.wavePhase === 0 &&
+        this.wavePendingSpawns === 0 &&
+        this.waveGroupEnemies.length > 0 &&
+        this.waveGroupEnemies.every((e) => e.isDead)
+      ) {
         this.wavePhase = 1;
         if (this.cornerWaveText) {
           this.cornerWaveText.setText('VICTORY');
@@ -1368,7 +1476,7 @@ export class GameScene extends Phaser.Scene {
 
     // 2. Update all enemies pursuing the player in the arena
     for (const enemy of this.enemies) {
-      enemy.update(dt, this.player.x, this.player.y, this.env.area);
+      enemy.update(dt, this.player.x, this.player.y, this.env.area, this.currentAimDir, this.enemies);
     }
 
     // 3. Resolve physical collisions between enemies and with player (small overlap allowed)
@@ -1604,7 +1712,7 @@ export class GameScene extends Phaser.Scene {
         if (enemy.isDead) continue;
         const dx = enemy.x - orb.sprite.x;
         const dy = (enemy.y - orbGroundY) / 0.85;
-        const enemyHitbox = enemy.championType === 'Zed' ? 14 : 10;
+        const enemyHitbox = enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
         if (Math.hypot(dx, dy) <= orbRadius + enemyHitbox) {
           hitEnemies.push(enemy);
         }
@@ -1618,7 +1726,7 @@ export class GameScene extends Phaser.Scene {
           if (enemy.isDead || damageTargets.has(enemy)) continue;
           const dx = enemy.x - orb.sprite.x;
           const dy = (enemy.y - orbGroundY) / 0.85;
-          const enemyHitbox = enemy.championType === 'Zed' ? 14 : 10;
+          const enemyHitbox = enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
           if (Math.hypot(dx, dy) <= splashRadius + enemyHitbox) {
             damageTargets.add(enemy);
           }
@@ -2257,7 +2365,7 @@ export class GameScene extends Phaser.Scene {
     const aliveEnemies: Enemy[] = [];
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
-      if (!e.isDead) {
+      if (!e.isDead && (e.championType !== 'Enemy3' || (e.enemy3State !== 'hidden' && e.visible))) {
         aliveEnemies.push(e);
       }
     }
@@ -2364,7 +2472,7 @@ export class GameScene extends Phaser.Scene {
       this.damagePlayer(enemy.attackDamage);
       enemy.resetAttackCooldown();
       this.flashPlayerHurt();
-      this.enemyHitCooldown = enemy.championType === 'Zed' ? 0.35 : 0.6;
+      this.enemyHitCooldown = enemy.championType === 'Zed' ? 0.35 : 0.5;
       return;
     }
   }

@@ -9,7 +9,7 @@ export interface ChampionAnimDef {
   repeat: number;
 }
 
-export type ChampionType = 'Yi' | 'Zed';
+export type ChampionType = 'Yi' | 'Zed' | 'Enemy3';
 
 export interface ChampionConfig {
   name: ChampionType;
@@ -181,5 +181,50 @@ export const ORB_CONFIG: OrbConfig = {
   visualScale: 0.53,
   originX: 0.5,
   originY: 0.5,
+};
+
+export const ENEMY3_CONFIG: ChampionConfig = {
+  name: 'Enemy3',
+  folder: 'assets/out/enemy3',
+  visualScale: 0.5,
+  originX: 0.49,
+  originY: 0.525,
+  walkSpeed: 0,
+  locomotionAnim: 'idle',
+  actionAnims: ['attack'],
+  deathAnim: 'die',
+  maxHp: 5,
+  animations: [
+    {
+      key: 'idle',
+      file: 'assets/out/enemy3/enemy3_strip.png',
+      frameWidth: 141,
+      frameHeight: 139,
+      frames: 8,
+      directions: 8,
+      fps: 8,
+      repeat: -1,
+    },
+    {
+      key: 'attack',
+      file: 'assets/out/enemy3_attack/enemy3_attack_strip.png',
+      frameWidth: 208,
+      frameHeight: 164,
+      frames: 9,
+      directions: 7,
+      fps: 16,
+      repeat: 0,
+    },
+    {
+      key: 'disappear',
+      file: 'assets/out/enemy3_disappear/enemy3_disappear_strip.png',
+      frameWidth: 181,
+      frameHeight: 143,
+      frames: 8,
+      directions: 8,
+      fps: 10,
+      repeat: 0,
+    },
+  ],
 };
 
