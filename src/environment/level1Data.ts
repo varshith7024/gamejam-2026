@@ -1,10 +1,19 @@
 import type { Pt } from './Collision';
+import type { LevelData } from './levelTypes';
+import { TEXT } from '../config/text';
 
 /**
  * Level 1 "THE VEIL" layout. All coordinates are in WORLD pixels == pixels of the master image
  * (public/assets/level1/veil_master.png, 1538x1023). The master image defines the camera.
  */
-export const LEVEL1 = {
+export const LEVEL1: LevelData = {
+  id: 'level1',
+  title: TEXT.level1Title,
+  subtitle: TEXT.level1Subtitle,
+  assetBase: 'assets/level1/',
+  masterFile: 'veil_master.png',
+  roster: { light: 'Yi', heavy: 'Zed' },
+  nextScene: 'Level2', // after the last wave: The Veil -> The Conduit
   world: { width: 1538, height: 1023 },
   floorCenter: { x: 817, y: 511 },
   playerStart: { x: 830, y: 545 },
@@ -90,4 +99,28 @@ export const LEVEL1 = {
     footprint?: [number, number];
     flat?: boolean;
   }[],
+
+  atmosphere: {
+    fogBanks: [
+      // key, x, y, scale, alpha, drift px, period ms
+      ['fog_wide', 330, 840, 1.9, 0.55, 110, 26000],
+      ['fog_wide', 1250, 850, 1.9, 0.5, -110, 30000],
+      ['fog_cloud', 230, 230, 1.5, 0.4, 70, 22000],
+      ['fog_cloud', 1380, 250, 1.5, 0.35, -70, 24000],
+      ['fog_puff', 215, 640, 1.5, 0.4, 40, 20000],
+      ['fog_wisp', 760, 850, 1.6, 0.35, 90, 28000],
+      // thin ground haze that crosses the playable floor (kept very faint)
+      ['fog_wisp', 650, 560, 1.7, 0.12, 160, 36000],
+      ['fog_cloud', 1000, 430, 1.3, 0.09, -140, 40000],
+    ],
+    motes: [
+      [520, 430, 1.1],
+      [1120, 560, 1.0],
+    ],
+    spirits: [
+      [330, 620, 1.2],
+      [1260, 480, 1.2],
+    ],
+    tints: { dust: 0xdedbe8, motes: 0x9ff4ff, shards: 0x050408 },
+  },
 };

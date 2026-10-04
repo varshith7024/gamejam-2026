@@ -1,6 +1,6 @@
-// Which scene the game opens on. Override in the browser with  ?scene=Menu  /  ?scene=Game  /  ?scene=Level1
-export const DEFAULT_START_SCENE = 'Level1';
-const VALID_SCENES = ['Menu', 'Game', 'Level1'];
+// Which scene the game opens on. Override in the browser with ?scene=Game / ?scene=Level1 / ?scene=Level2
+export const DEFAULT_START_SCENE = 'Game';
+const VALID_SCENES = ['Game', 'Level1', 'Level2'];
 
 export function resolveStartScene(): string {
   const requested = new URLSearchParams(window.location.search).get('scene');

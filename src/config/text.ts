@@ -6,6 +6,8 @@ export const TEXT = {
   restart: 'PRESS R TO RESTART',
   level1Title: 'THE VEIL',
   level1Subtitle: 'Visual prototype',
+  level2Title: 'THE CONDUIT',
+  level2Subtitle: 'Where the light is drawn',
   level1Controls: 'WASD move   |   G collision debug',
   controls: 'WASD move   |   Mouse aim + hold click to shoot   |   SPACE dash',
 };

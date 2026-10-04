@@ -19,6 +19,46 @@ export function ellipsePolygon(cx: number, cy: number, rx: number, ry: number, s
   return pts;
 }
 
+export function lineSegmentsIntersect(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x3: number,
+  y3: number,
+  x4: number,
+  y4: number,
+): boolean {
+  const d1 = (x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3);
+  const d2 = (x4 - x3) * (y2 - y3) - (y4 - y3) * (x2 - x3);
+  const d3 = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+  const d4 = (x2 - x1) * (y4 - y1) - (y2 - y1) * (x4 - x1);
+  return (
+    ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+  );
+}
+
+export function pointToSegmentDistSq(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): { distSq: number; t: number } {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return { distSq: (px - x1) * (px - x1) + (py - y1) * (py - y1), t: 0 };
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  const ex = px - projX;
+  const ey = py - projY;
+  return { distSq: ex * ex + ey * ey, t };
+}
+
 interface Edge {
   readonly a: Pt;
   readonly b: Pt;
@@ -35,11 +75,14 @@ interface Edge {
  */
 export class WalkableArea {
   private readonly edges: Edge[] = [];
+  readonly navWaypoints: readonly Pt[];
 
   constructor(
     readonly walkable: readonly Pt[],
     readonly blockers: readonly (readonly Pt[])[],
+    navWaypoints: readonly Pt[] = [],
   ) {
+    this.navWaypoints = navWaypoints;
     const addPoly = (poly: readonly Pt[]) => {
       for (let i = 0; i < poly.length; i++) {
         const a = poly[i];
@@ -183,5 +226,121 @@ export class WalkableArea {
     }
 
     return { x, y };
+  }
+
+  /**
+   * Tests if a straight line of sight exists between (x1, y1) and (x2, y2).
+   * Checks if the segment intersects any blocker edge, or passes within padding of a blocker vertex.
+   */
+  hasLineOfSight(x1: number, y1: number, x2: number, y2: number, padding = 14): boolean {
+    const padSq = padding * padding;
+    for (const b of this.blockers) {
+      for (let i = 0; i < b.length; i++) {
+        const c = b[i];
+        const d = b[(i + 1) % b.length];
+        if (lineSegmentsIntersect(x1, y1, x2, y2, c[0], c[1], d[0], d[1])) {
+          return false;
+        }
+        const { distSq, t } = pointToSegmentDistSq(c[0], c[1], x1, y1, x2, y2);
+        if (t > 0.08 && t < 0.92 && distSq < padSq) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Returns the immediate steering target for navigation from (startX, startY) towards (targetX, targetY).
+   * If line of sight is clear, returns (targetX, targetY).
+   * If line of sight is blocked by an obstacle, routes through navigation waypoints around the obstacle.
+   */
+  getSteeringTarget(
+    startX: number,
+    startY: number,
+    targetX: number,
+    targetY: number,
+    padding = 14,
+  ): { x: number; y: number } {
+    if (this.hasLineOfSight(startX, startY, targetX, targetY, padding)) {
+      return { x: targetX, y: targetY };
+    }
+
+    const wpts = this.navWaypoints;
+    if (wpts.length === 0) {
+      return { x: targetX, y: targetY };
+    }
+
+    const N = wpts.length;
+    // Edge distances along the navigation ring
+    const edgeDists: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const a = wpts[i];
+      const b = wpts[(i + 1) % N];
+      edgeDists.push(Math.hypot(b[0] - a[0], b[1] - a[1]));
+    }
+
+    const loopDist = (i: number, j: number): { dist: number; dir: number } => {
+      if (i === j) return { dist: 0, dir: 1 };
+      let distCW = 0;
+      let curr = i;
+      while (curr !== j) {
+        distCW += edgeDists[curr];
+        curr = (curr + 1) % N;
+      }
+      let distCCW = 0;
+      curr = i;
+      while (curr !== j) {
+        curr = (curr - 1 + N) % N;
+        distCCW += edgeDists[curr];
+      }
+      return distCW <= distCCW ? { dist: distCW, dir: 1 } : { dist: distCCW, dir: -1 };
+    };
+
+    let bestDist = Infinity;
+    let bestI = -1;
+    let bestDir = 1;
+
+    for (let i = 0; i < N; i++) {
+      if (!this.hasLineOfSight(startX, startY, wpts[i][0], wpts[i][1], padding)) continue;
+      const dStartToI = Math.hypot(wpts[i][0] - startX, wpts[i][1] - startY);
+
+      for (let j = 0; j < N; j++) {
+        if (!this.hasLineOfSight(wpts[j][0], wpts[j][1], targetX, targetY, padding)) continue;
+        const dJToTarget = Math.hypot(targetX - wpts[j][0], targetY - wpts[j][1]);
+        const { dist: dRing, dir } = loopDist(i, j);
+        const total = dStartToI + dRing + dJToTarget;
+        if (total < bestDist) {
+          bestDist = total;
+          bestI = i;
+          bestDir = dir;
+        }
+      }
+    }
+
+    if (bestI === -1) {
+      // Fallback: pick closest waypoint to start
+      let closestDist = Infinity;
+      for (let i = 0; i < N; i++) {
+        const d = Math.hypot(wpts[i][0] - startX, wpts[i][1] - startY);
+        if (d < closestDist) {
+          closestDist = d;
+          bestI = i;
+        }
+      }
+    }
+
+    if (bestI === -1) {
+      return { x: targetX, y: targetY };
+    }
+
+    // If already at or very close to waypoint bestI, advance along ring in the chosen direction
+    const distToBestI = Math.hypot(wpts[bestI][0] - startX, wpts[bestI][1] - startY);
+    if (distToBestI < 25) {
+      const nextI = (bestI + bestDir + N) % N;
+      return { x: wpts[nextI][0], y: wpts[nextI][1] };
+    }
+
+    return { x: wpts[bestI][0], y: wpts[bestI][1] };
   }
 }

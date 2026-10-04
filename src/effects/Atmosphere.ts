@@ -2,22 +2,30 @@ import Phaser from 'phaser';
 import { BALANCE } from '../config/balance';
 import { DEPTH } from '../environment/Level1Environment';
 import { LEVEL1 } from '../environment/level1Data';
+import type { LevelData } from '../environment/levelTypes';
 
-const BASE = 'assets/level1/atmos/';
 const FOG = ['fog_wide', 'fog_puff', 'fog_wisp', 'fog_cloud'] as const;
 
 /**
- * Subtle Level 1 atmosphere: drifting fog banks and spirit lights (from the supplied atmosphere sheet),
+ * Subtle atmosphere (shared by every level; each level supplies its own sprites + placements via LevelData.atmosphere): drifting fog banks and spirit lights (from the supplied atmosphere sheet),
  * plus a few procedural particle emitters (dust, dark ash, light motes) and a screen vignette.
  * Everything is slow and low-alpha so it never hurts combat readability.
  */
 export class Atmosphere {
-  constructor(private scene: Phaser.Scene) {}
+  constructor(
+    private scene: Phaser.Scene,
+    private level: LevelData = LEVEL1,
+  ) {}
 
-  static preload(scene: Phaser.Scene) {
-    scene.load.setPath(BASE);
+  // Textures are namespaced by level id so two levels can be preloaded together.
+  private static key(level: LevelData, k: string) {
+    return `${level.id}_atmos_${k}`;
+  }
+
+  static preload(scene: Phaser.Scene, level: LevelData = LEVEL1) {
+    scene.load.setPath(`${level.assetBase}atmos/`);
     for (const k of [...FOG, 'motes', 'spirits', 'dust'])
-      scene.load.image(`atmos_${k}`, `atmos_${k}.png`);
+      scene.load.image(Atmosphere.key(level, k), `atmos_${k}.png`);
   }
 
   create() {
@@ -51,21 +59,10 @@ export class Atmosphere {
 
   /** Large soft fog banks: heavier in the pits at the arena corners, a few thin ones drifting across the floor. */
   private createFogBanks() {
-    const banks = [
-      // key, x, y, scale, alpha, drift px, period ms   (camera shows roughly x 177..1457, y 151..871)
-      ['fog_wide', 330, 840, 1.9, 0.55, 110, 26000],
-      ['fog_wide', 1250, 850, 1.9, 0.5, -110, 30000],
-      ['fog_cloud', 230, 230, 1.5, 0.4, 70, 22000],
-      ['fog_cloud', 1380, 250, 1.5, 0.35, -70, 24000],
-      ['fog_puff', 215, 640, 1.5, 0.4, 40, 20000],
-      ['fog_wisp', 760, 850, 1.6, 0.35, 90, 28000],
-      // thin ground haze that crosses the playable floor (kept very faint)
-      ['fog_wisp', 650, 560, 1.7, 0.12, 160, 36000],
-      ['fog_cloud', 1000, 430, 1.3, 0.09, -140, 40000],
-    ] as const;
+    const banks = this.level.atmosphere.fogBanks;
     banks.forEach(([key, x, y, scale, alpha, drift, period], i) => {
       const s = this.scene.add
-        .image(x, y, `atmos_${key}`)
+        .image(x, y, Atmosphere.key(this.level, key))
         .setScale(scale)
         .setAlpha(alpha)
         .setDepth(DEPTH.atmosphere);
@@ -92,13 +89,10 @@ export class Atmosphere {
 
   /** The supplied "light motes" and "spirit wisp" crops, drifting slowly with additive blending. */
   private createSheetSprites() {
-    const motes = [
-      [520, 430, 1.1],
-      [1120, 560, 1.0],
-    ] as const;
+    const motes = this.level.atmosphere.motes;
     motes.forEach(([x, y, sc], i) => {
       const s = this.scene.add
-        .image(x, y, 'atmos_motes')
+        .image(x, y, Atmosphere.key(this.level, 'motes'))
         .setScale(sc)
         .setAlpha(0.32)
         .setBlendMode(Phaser.BlendModes.ADD)
@@ -114,14 +108,11 @@ export class Atmosphere {
         ease: 'Sine.easeInOut',
       });
     });
-    const spirits = [
-      [330, 620],
-      [1260, 480],
-    ] as const;
-    spirits.forEach(([x, y], i) => {
+    const spirits = this.level.atmosphere.spirits;
+    spirits.forEach(([x, y, sc], i) => {
       const s = this.scene.add
-        .image(x, y, 'atmos_spirits')
-        .setScale(1.2)
+        .image(x, y, Atmosphere.key(this.level, 'spirits'))
+        .setScale(sc)
         .setAlpha(0.45)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setDepth(DEPTH.atmosphere);
@@ -138,7 +129,8 @@ export class Atmosphere {
   }
 
   private createEmitters() {
-    const { width, height } = LEVEL1.world;
+    const { width, height } = this.level.world;
+    const tints = this.level.atmosphere.tints;
     // helper: fade in and out over a particle's life
     const lifeFade = (peak: number) => ({
       onEmit: () => 0,
@@ -157,7 +149,7 @@ export class Atmosphere {
         alpha: lifeFade(0.55),
         frequency: 160,
         quantity: 1,
-        tint: 0xdedbe8,
+        tint: tints.dust,
       })
       .setDepth(DEPTH.atmosphere);
 
@@ -173,7 +165,7 @@ export class Atmosphere {
         alpha: lifeFade(0.9),
         frequency: 420,
         quantity: 1,
-        tint: 0x9ff4ff,
+        tint: tints.motes,
         blendMode: 'ADD',
       })
       .setDepth(DEPTH.atmosphere);
@@ -191,7 +183,7 @@ export class Atmosphere {
         alpha: lifeFade(0.6),
         frequency: 520,
         quantity: 1,
-        tint: 0x050408,
+        tint: tints.shards,
       })
       .setDepth(DEPTH.atmosphere);
   }

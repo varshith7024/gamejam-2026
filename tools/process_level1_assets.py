@@ -95,8 +95,11 @@ def fit_background(gray: np.ndarray) -> np.ndarray:
     return model.reshape(h, w)
 
 
-def key_props() -> int:
-    src = np.array(Image.open(SRC / "props/veil_prop_sheet.png").convert("RGB")).astype(np.float32)
+def key_props(sheet=None, out=None, boxes=None) -> int:
+    """Key props out of a flat-grey prop sheet. Defaults = Level 1; other levels pass their own sheet/out/boxes."""
+    sheet = sheet or SRC / "props/veil_prop_sheet.png"
+    boxes = boxes or PROPS_PREVIEW_BOXES
+    src = np.array(Image.open(sheet).convert("RGB")).astype(np.float32)
     gray = src.mean(2)
     fit_bg = fit_background(gray)
     diff = np.abs(gray - fit_bg)
@@ -127,9 +130,9 @@ def key_props() -> int:
             mask[comp == i + 1] = 0
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
 
-    out_dir = OUT / "props"
+    out_dir = (out or OUT) / "props"
     out_dir.mkdir(parents=True, exist_ok=True)
-    for name, box in PROPS_PREVIEW_BOXES.items():
+    for name, box in boxes.items():
         x0, y0, x1, y1 = [int(round(v * PREVIEW_TO_NATIVE)) for v in box]
         m = np.zeros_like(mask)
         m[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
@@ -142,18 +145,21 @@ def key_props() -> int:
         alpha = cv2.GaussianBlur(mm.astype(np.float32), (3, 3), 0.7)
         rgba = np.dstack([src, alpha * 255]).astype(np.uint8)[by0:by1, bx0:bx1]
         Image.fromarray(rgba, "RGBA").save(out_dir / f"prop_{name}.png", optimize=True)
-    return len(PROPS_PREVIEW_BOXES)
+    return len(boxes)
 
 
 def _smooth(t: np.ndarray) -> np.ndarray:
     return t * t * (3 - 2 * t)
 
 
-def key_atmosphere() -> int:
-    gray = np.array(Image.open(SRC / "atmosphere/veil_atmosphere_sheet.png").convert("L")).astype(np.float32)
-    out_dir = OUT / "atmos"
+def key_atmosphere(sheet=None, out=None, boxes=None) -> int:
+    """Convert light-on-dark atmosphere crops to luminance-alpha PNGs. Defaults = Level 1."""
+    sheet = sheet or SRC / "atmosphere/veil_atmosphere_sheet.png"
+    boxes = boxes or ATMOS_PREVIEW_BOXES
+    gray = np.array(Image.open(sheet).convert("L")).astype(np.float32)
+    out_dir = (out or OUT) / "atmos"
     out_dir.mkdir(parents=True, exist_ok=True)
-    for name, (box, (f_top, f_bot, f_side)) in ATMOS_PREVIEW_BOXES.items():
+    for name, (box, (f_top, f_bot, f_side)) in boxes.items():
         x0, y0, x1, y1 = [int(round(v * PREVIEW_TO_NATIVE)) for v in box]
         lum = gray[y0:y1, x0:x1]
         h, w = lum.shape
@@ -166,16 +172,19 @@ def key_atmosphere() -> int:
         rgb = np.clip(lum * 1.1, 0, 255)
         rgba = np.dstack([np.repeat(rgb[..., None], 3, 2), alpha * 255]).astype(np.uint8)
         Image.fromarray(rgba, "RGBA").save(out_dir / f"atmos_{name}.png", optimize=True)
-    return len(ATMOS_PREVIEW_BOXES)
+    return len(boxes)
 
 
-def cut_occluders() -> list:
-    master = Image.open(SRC / "master/veil_master_concept.png").convert("RGB")
-    out_dir = OUT / "occluders"
+def cut_occluders(master_img=None, out=None, occluders=None, feather=0.0) -> list:
+    """Cut walk-behind overlays out of the master. Defaults = Level 1 (feather=0). feather>0 = gaussian-softened edge (px)."""
+    master = (master_img or Image.open(SRC / "master/veil_master_concept.png")).convert("RGB")
+    out = out or OUT
+    occluders = occluders or OCCLUDERS
+    out_dir = out / "occluders"
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest = []
     SS = 4  # supersample the mask for antialiased polygon edges
-    for name, spec in OCCLUDERS.items():
+    for name, spec in occluders.items():
         poly = spec["polygon"]
         xs, ys = [p[0] for p in poly], [p[1] for p in poly]
         x0, y0, x1, y1 = min(xs) - 2, min(ys) - 2, max(xs) + 2, max(ys) + 2
@@ -184,12 +193,15 @@ def cut_occluders() -> list:
         from PIL import ImageDraw
         ImageDraw.Draw(big).polygon([((px - x0) * SS, (py - y0) * SS) for px, py in poly], fill=255)
         alpha = big.resize((w, h), Image.LANCZOS)
+        if feather > 0:
+            from PIL import ImageFilter
+            alpha = alpha.filter(ImageFilter.GaussianBlur(feather))
         crop = master.crop((x0, y0, x1, y1)).convert("RGBA")
         crop.putalpha(alpha)
         fname = f"occ_{name}.png"
         crop.save(out_dir / fname, optimize=True)
         manifest.append({"key": f"occ_{name}", "file": f"occluders/{fname}", "x": x0, "y": y0, "sortY": spec["sortY"]})
-    (OUT / "occluders.json").write_text(json.dumps(manifest, indent=2))
+    (out / "occluders.json").write_text(json.dumps(manifest, indent=2))
     return manifest
 
 
