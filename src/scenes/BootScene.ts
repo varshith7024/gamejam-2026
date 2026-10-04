@@ -79,6 +79,29 @@ export class BootScene extends Phaser.Scene {
       this.textures.get('ball_only').setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
 
+    // Generate soft feathered ground shadow texture (matches the player's soft contact shadow)
+    if (!this.textures.exists('character_shadow')) {
+      const canvas = this.textures.createCanvas('character_shadow', 64, 32);
+      if (canvas) {
+        const ctx = canvas.context;
+        ctx.save();
+        ctx.translate(32, 16);
+        ctx.scale(1, 0.55);
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 28);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0.72)');
+        grad.addColorStop(0.3, 'rgba(0, 0, 0, 0.55)');
+        grad.addColorStop(0.65, 'rgba(0, 0, 0, 0.22)');
+        grad.addColorStop(0.88, 'rgba(0, 0, 0, 0.06)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        canvas.refresh();
+      }
+    }
+
     // Register 8-directional Knight animations
     for (const anim of KNIGHT_ANIMATIONS) {
       for (let dir = 0; dir < NUM_DIRECTIONS; dir++) {

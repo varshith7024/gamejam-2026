@@ -10,6 +10,29 @@ import { LEVEL1 } from '../environment/level1Data';
 import type { WalkableArea } from '../environment/Collision';
 import { DEPTH } from '../environment/Level1Environment';
 
+function ensureShadowTexture(scene: Phaser.Scene) {
+  if (scene.textures.exists('character_shadow')) return;
+  const canvas = scene.textures.createCanvas('character_shadow', 64, 32);
+  if (canvas) {
+    const ctx = canvas.context;
+    ctx.save();
+    ctx.translate(32, 16);
+    ctx.scale(1, 0.55);
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 28);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.72)');
+    grad.addColorStop(0.3, 'rgba(0, 0, 0, 0.55)');
+    grad.addColorStop(0.65, 'rgba(0, 0, 0, 0.22)');
+    grad.addColorStop(0.88, 'rgba(0, 0, 0, 0.06)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    canvas.refresh();
+  }
+}
+
 export class Enemy extends Phaser.GameObjects.Sprite {
   // Global lock ensuring only one Enemy3 teleports at a time
   public static currentTeleporter: Enemy | null = null;
@@ -30,6 +53,8 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private enemy3Timer = 0;
   private enemy3DriftVx = 0;
   private enemy3DriftVy = 0;
+  private shadow?: Phaser.GameObjects.Image;
+  private hoverTime = Math.random() * Math.PI * 2;
 
   // AI & Movement State
   private isMoving = true;
@@ -101,6 +126,13 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.enemy3Timer = Phaser.Math.FloatBetween(0.05, 0.45);
       this.playChampionAnim('idle', this.currentDir);
       this.anims.setProgress(Math.random());
+
+      // Detached soft feathered ground shadow matching player/character style
+      ensureShadowTexture(scene);
+      this.shadow = scene.add.image(x, y + 24, 'character_shadow');
+      this.shadow.setOrigin(0.5, 0.5);
+      this.shadow.setScale(0.75, 0.65);
+      this.shadow.setDepth(DEPTH.groundDecal + 15);
     } else {
       // Start locomotion animation with desynchronized cycle
       this.currentAnimKey = config.locomotionAnim;
@@ -138,9 +170,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
           }
           this.enemy3State = 'idle_pause';
           this.enemy3Timer = Phaser.Math.FloatBetween(0.4, 0.7); // Randomized ~0.5s idle
-          // Pick individual random drift velocity during idle pause so they move around individually
+          // Pick individual random drift velocity during idle pause so they float around smoothly
           const driftAngle = Math.random() * Math.PI * 2;
-          const driftSpeed = Phaser.Math.FloatBetween(30, 60);
+          const driftSpeed = Phaser.Math.FloatBetween(25, 45);
           this.enemy3DriftVx = Math.cos(driftAngle) * driftSpeed;
           this.enemy3DriftVy = Math.sin(driftAngle) * driftSpeed * 0.85;
           this.playChampionAnim('idle', this.currentDir);
@@ -645,7 +677,49 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     });
   }
 
+  public override preUpdate(time: number, delta: number) {
+    super.preUpdate(time, delta);
+    if (this.championType === 'Enemy3' && !this.isDead) {
+      this.hoverTime += (delta / 1000) * 3.5;
+      const bob = Math.sin(this.hoverTime) * 7;
+      this.displayOriginY = this.height * this.config.originY + 20 + bob;
+      this.updateShadow(bob);
+    }
+  }
+
+  private updateShadow(bob = 0) {
+    if (!this.shadow) return;
+    this.shadow.setPosition(this.x, this.y + 24);
+    const isVisible = this.visible && this.enemy3State !== 'hidden' && !this.isDead;
+    this.shadow.setVisible(isVisible);
+    if (isVisible) {
+      const shadowPulse = 1 - (bob / 28);
+      this.shadow.setScale(0.75 * shadowPulse, 0.65 * shadowPulse);
+      this.shadow.setAlpha(this.alpha * 0.75 * shadowPulse);
+    }
+  }
+
+  public override setVisible(value: boolean): this {
+    super.setVisible(value);
+    if (this.shadow) {
+      this.shadow.setVisible(value && !this.isDead && this.enemy3State !== 'hidden');
+    }
+    return this;
+  }
+
+  public override setAlpha(alpha?: number): this {
+    super.setAlpha(alpha);
+    if (this.shadow && alpha !== undefined) {
+      this.shadow.setAlpha(alpha * 0.75);
+    }
+    return this;
+  }
+
   public override destroy(fromScene?: boolean) {
+    if (this.shadow) {
+      this.shadow.destroy();
+      this.shadow = undefined;
+    }
     if (Enemy.currentTeleporter === this) {
       Enemy.currentTeleporter = null;
     }
@@ -683,6 +757,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     });
 
     if (this.championType === 'Enemy3') {
+      if (this.shadow) {
+        this.scene.tweens.add({
+          targets: this.shadow,
+          alpha: 0,
+          duration: 600,
+          ease: 'Quad.easeOut',
+        });
+      }
       // Enemy3 fades out after disappear/death animation
       this.scene.time.delayedCall(800, () => {
         this.scene.tweens.add({
