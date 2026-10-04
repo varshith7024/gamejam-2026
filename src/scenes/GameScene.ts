@@ -775,6 +775,7 @@ export class GameScene extends Phaser.Scene {
       // Default (Level 1): a ring around the floor centre
       // For Enemy3 in Level 1, spawn near the visible perimeter of the arena so player sees him appear and disappear
       const dist = type === 'Enemy3' ? 520 : 850;
+      const perpAngle = angleRad + Math.PI / 2;
       x = fc.x + Math.cos(angleRad) * dist + Math.cos(perpAngle) * offsetDist;
       y = fc.y + Math.sin(angleRad) * (dist * 0.7) + Math.sin(perpAngle) * (offsetDist * 0.7);
     }
