@@ -7,6 +7,7 @@ import {
 } from '../config/championAnimations';
 import { LEVEL1 } from '../environment/level1Data';
 import type { WalkableArea } from '../environment/Collision';
+import { DEPTH } from '../environment/Level1Environment';
 
 export class Enemy extends Phaser.GameObjects.Sprite {
   public championType: ChampionType;
@@ -41,6 +42,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
   // Attack engagement distance (scaled with champion size)
   private attackRange = 50;
+  public readonly stopDistance: number;
 
   constructor(
     scene: Phaser.Scene,
@@ -57,6 +59,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.maxHp = config.maxHp;
     this.currentHp = this.maxHp;
     this.attackRange = type === 'Zed' ? 68 : 50;
+    this.stopDistance = type === 'Zed' ? 52 : 36;
     this.attackDamage = type === 'Zed' ? 5 : 1;
     this.attackCooldownDuration = type === 'Zed' ? 0.75 : 1.0;
     this.attackCooldown = this.attackCooldownDuration;
@@ -69,6 +72,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.setOrigin(config.originX, config.originY);
 
     scene.add.existing(this);
+    this.setDepth(this.getFootY());
 
     // Initial direction facing towards arena floor center
     const dx = floorCenter.x - x;
@@ -121,13 +125,17 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     }
   }
 
+  public getFootY(): number {
+    return this.y + (this.championType === 'Zed' ? -7 : -8);
+  }
+
   public update(dt: number, playerX?: number, playerY?: number, area?: WalkableArea) {
     if (this.isDead) return;
 
     // Handle stumble timer after being hit
     if (this.isStumbling) {
       this.stumbleTimer -= dt;
-      this.setDepth(this.y);
+      this.setDepth(this.getFootY());
       if (this.stumbleTimer <= 0) {
         this.isStumbling = false;
         this.isActing = false;
@@ -155,6 +163,18 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       ) {
         // Close enough and clear line of sight: stop and execute an attack
         this.triggerAttack(playerX, playerY);
+      } else if (
+        distToPlayer <= this.stopDistance &&
+        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 10))
+      ) {
+        // In striking range! Hold ground, face the player, wait for attack cooldown
+        this.isMoving = false;
+        const faceDir = this.computeDirection(dx, dy);
+        if (faceDir !== this.currentDir || this.currentAnimKey !== 'idle') {
+          this.currentDir = faceDir;
+          this.currentAnimKey = 'idle';
+          this.playChampionAnim('idle', this.currentDir);
+        }
       } else {
         // Move towards player using locomotion animation
         this.isMoving = true;
@@ -226,7 +246,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     }
 
     // Depth sorting based on ground feet position
-    this.setDepth(this.y);
+    this.setDepth(this.getFootY());
   }
 
   private startChasing() {
@@ -263,25 +283,40 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.attackCooldown = this.attackCooldownDuration;
   }
 
-  public takeDamage(fromX: number, fromY: number, area?: WalkableArea, damage = 1): boolean {
+  public takeDamage(
+    fromX: number,
+    fromY: number,
+    area?: WalkableArea,
+    damage = 1,
+    knockbackDist = 26,
+    stunDuration?: number,
+  ): boolean {
     if (this.isDead) return false;
 
     this.currentHp -= damage;
 
     if (this.currentHp <= 0) {
-      this.die(fromX, fromY);
+      this.die(fromX, fromY, knockbackDist);
       return true; // Monster killed
     }
 
-    this.stumble(fromX, fromY, area);
+    this.stumble(fromX, fromY, area, knockbackDist, stunDuration);
     return false; // Monster survived and stumbled
   }
 
-  private stumble(fromX: number, fromY: number, area?: WalkableArea) {
+  private stumble(
+    fromX: number,
+    fromY: number,
+    area?: WalkableArea,
+    knockbackDist = 26,
+    stunDuration?: number,
+  ) {
     this.isMoving = false;
-    // Zed stumble duration reset to 0.5s, Yi stumble duration is 0.75s
-    this.stumbleTimer = this.championType === 'Zed' ? 0.5 : 0.75;
-    this.attackCooldown = this.attackCooldownDuration;
+    this.isActing = false;
+    this.isStumbling = true;
+    // Zed stumble duration reset to 0.5s, Yi stumble duration is 0.75s, or custom stun duration (e.g. 1s for whirlwind)
+    this.stumbleTimer = stunDuration !== undefined ? stunDuration : (this.championType === 'Zed' ? 0.5 : 0.75);
+    this.attackCooldown = Math.max(this.attackCooldownDuration, this.stumbleTimer + 0.2);
 
     // Face the attacker
     this.currentDir = this.computeDirection(fromX - this.x, fromY - this.y);
@@ -290,7 +325,6 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     // Knockback recoil away from player
     const rad = Math.atan2(this.y - fromY, this.x - fromX);
-    const knockbackDist = 26;
     const kx = Math.cos(rad) * knockbackDist;
     const ky = Math.sin(rad) * knockbackDist * 0.85;
     const rx = this.championType === 'Zed' ? 16 : 10;
@@ -312,7 +346,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     });
   }
 
-  public die(fromX: number, fromY: number) {
+  public die(fromX: number, fromY: number, knockbackDist = 26) {
     this.isDead = true;
     this.isDying = true;
     this.isMoving = false;
@@ -326,8 +360,12 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     // Subtle final knockback
     const rad = Math.atan2(this.y - fromY, this.x - fromX);
-    this.x += Math.cos(rad) * 14;
-    this.y += Math.sin(rad) * 14 * 0.85;
+    const finalDist = Math.max(14, knockbackDist * 0.45);
+    this.x += Math.cos(rad) * finalDist;
+    this.y += Math.sin(rad) * finalDist * 0.85;
+
+    // Place corpse on floor layer so all standing entities (player, alive enemies) render on top
+    this.setDepth(DEPTH.groundDecal + 100 + this.y * 0.001);
 
     // White death flash
     this.setTintFill(0xffffff);
@@ -372,11 +410,36 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     }
   }
 
+  public getCollisionRadius(): number {
+    return this.championType === 'Zed' ? 24 : 14;
+  }
+
+  public pushBody(pushX: number, pushY: number, area?: WalkableArea) {
+    if (this.isDead) return;
+    const rx = this.championType === 'Zed' ? 16 : 10;
+    const ry = this.championType === 'Zed' ? 8 : 5;
+    if (area && this.hasEnteredArena) {
+      const p = area.move(this.x, this.y, pushX, pushY, rx, ry);
+      this.x = p.x;
+      this.y = p.y;
+    } else {
+      this.x += pushX;
+      this.y += pushY;
+    }
+    this.setDepth(this.getFootY());
+  }
+
   // -------------------------------------------------------------
   // 8-DIRECTION MAPPING FOR YI & ZED
   // Rows: 0=North, 1=NE, 2=East, 3=SE, 4=South, 5=SW, 6=West, 7=NW
   // -------------------------------------------------------------
   public computeDirection(dx: number, dy: number): number {
+    const distSq = dx * dx + dy * dy;
+    if (distSq < 1.0) {
+      // Guard against division by zero or jitter when distance is near 0
+      return this.currentDir;
+    }
+
     const rad = Math.atan2(dy, dx);
     let deg = Phaser.Math.RadToDeg(rad);
     if (deg < 0) deg += 360;

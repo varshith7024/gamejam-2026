@@ -47,7 +47,7 @@ export const KNIGHT_ANIMATIONS: KnightAnimation[] = [
   { key: 'Melee', name: 'Melee', fileName: 'Melee.png', fps: 25, repeat: 0 },
   { key: 'Melee2', name: 'Melee 2', fileName: 'Melee2.png', fps: 25, repeat: 0 },
   { key: 'MeleeRun', name: 'Melee Run', fileName: 'MeleeRun.png', fps: 26, repeat: 0 },
-  { key: 'MeleeSpin', name: 'Melee Spin', fileName: 'MeleeSpin.png', fps: 26, repeat: 0 },
+  { key: 'MeleeSpin', name: 'Melee Spin', fileName: 'MeleeSpin.png', fps: 13, repeat: 0 },
   { key: 'Pummel', name: 'Pummel', fileName: 'Pummel.png', fps: 25, repeat: 0 },
   { key: 'Kick', name: 'Kick', fileName: 'Kick.png', fps: 22, repeat: 0 },
   { key: 'CastSpell', name: 'Cast Spell', fileName: 'CastSpell.png', fps: 20, repeat: 0 },

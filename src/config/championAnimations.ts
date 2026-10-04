@@ -35,7 +35,7 @@ export const YI_CONFIG: ChampionConfig = {
   locomotionAnim: 'run',
   actionAnims: ['attack_1', 'idle', 'get_hit'],
   deathAnim: 'death',
-  maxHp: 2,
+  maxHp: 3,
   animations: [
     {
       key: 'idle',
@@ -100,7 +100,7 @@ export const ZED_CONFIG: ChampionConfig = {
   locomotionAnim: 'walk',
   actionAnims: ['attack', 'idle', 'get_hit'],
   deathAnim: 'die',
-  maxHp: 4,
+  maxHp: 7,
   animations: [
     {
       key: 'idle',
@@ -154,3 +154,32 @@ export const ZED_CONFIG: ChampionConfig = {
     },
   ],
 };
+
+export interface OrbConfig {
+  key: string;
+  file: string;
+  frameWidth: number;
+  frameHeight: number;
+  frames: number;
+  directions: number;
+  fps: number;
+  repeat: number;
+  visualScale: number;
+  originX: number;
+  originY: number;
+}
+
+export const ORB_CONFIG: OrbConfig = {
+  key: 'orb',
+  file: 'assets/out/orb/orb_strip.png',
+  frameWidth: 167,
+  frameHeight: 159,
+  frames: 8,
+  directions: 8,
+  fps: 12,
+  repeat: -1,
+  visualScale: 0.53,
+  originX: 0.5,
+  originY: 0.5,
+};
+

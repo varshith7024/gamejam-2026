@@ -18,7 +18,7 @@ export class Atmosphere {
   ) {}
 
   // Textures are namespaced by level id so two levels can be preloaded together.
-  private static key(level: LevelData, k: string) {
+  public static key(level: LevelData, k: string) {
     return `${level.id}_atmos_${k}`;
   }
 

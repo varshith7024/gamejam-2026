@@ -6,7 +6,7 @@ import {
   FRAMES_PER_DIR,
   NUM_DIRECTIONS,
 } from '../config/animations';
-import { YI_CONFIG, ZED_CONFIG } from '../config/championAnimations';
+import { YI_CONFIG, ZED_CONFIG, ORB_CONFIG } from '../config/championAnimations';
 import { Level1Environment } from '../environment/Level1Environment';
 import { LEVEL1 } from '../environment/level1Data';
 import { LEVEL2 } from '../environment/level2Data';
@@ -20,6 +20,15 @@ export class BootScene extends Phaser.Scene {
 
   preload() {
     this.cameras.main.setBackgroundColor('#000000');
+    this.load.setPath('');
+    this.load.image('ball_only', 'assets/ball_only.png');
+
+    // Preload Orb spritesheet
+    this.load.spritesheet(ORB_CONFIG.key, ORB_CONFIG.file, {
+      frameWidth: ORB_CONFIG.frameWidth,
+      frameHeight: ORB_CONFIG.frameHeight,
+      endFrame: ORB_CONFIG.frames * ORB_CONFIG.directions - 1,
+    });
 
     // Preload Knight animations (1920x1024, 15 cols x 8 rows)
     for (const anim of KNIGHT_ANIMATIONS) {
@@ -57,6 +66,10 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    if (this.textures.exists('ball_only')) {
+      this.textures.get('ball_only').setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+
     // Register 8-directional Knight animations
     for (const anim of KNIGHT_ANIMATIONS) {
       for (let dir = 0; dir < NUM_DIRECTIONS; dir++) {
@@ -108,6 +121,25 @@ export class BootScene extends Phaser.Scene {
             repeat: anim.repeat,
           });
         }
+      }
+    }
+
+    // Register 8-directional Orb animations (orb_fly_0 ... orb_fly_7)
+    if (this.textures.exists(ORB_CONFIG.key)) {
+      this.textures.get(ORB_CONFIG.key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    for (let dir = 0; dir < ORB_CONFIG.directions; dir++) {
+      const key = `${ORB_CONFIG.key}_fly_${dir}`;
+      if (!this.anims.exists(key)) {
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(ORB_CONFIG.key, {
+            start: dir * ORB_CONFIG.frames,
+            end: dir * ORB_CONFIG.frames + ORB_CONFIG.frames - 1,
+          }),
+          frameRate: ORB_CONFIG.fps,
+          repeat: ORB_CONFIG.repeat,
+        });
       }
     }
 
