@@ -1,0 +1,30 @@
+[
+  {
+    "key": "occ_altar",
+    "file": "occluders/occ_altar.png",
+    "x": 692,
+    "y": 334,
+    "sortY": 418
+  },
+  {
+    "key": "occ_brazier_nw",
+    "file": "occluders/occ_brazier_nw.png",
+    "x": 362,
+    "y": 264,
+    "sortY": 350
+  },
+  {
+    "key": "occ_brazier_w",
+    "file": "occluders/occ_brazier_w.png",
+    "x": 323,
+    "y": 416,
+    "sortY": 502
+  },
+  {
+    "key": "occ_brazier_e",
+    "file": "occluders/occ_brazier_e.png",
+    "x": 1248,
+    "y": 476,
+    "sortY": 562
+  }
+]

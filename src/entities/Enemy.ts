@@ -42,7 +42,13 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   // Attack engagement distance (scaled with champion size)
   private attackRange = 50;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, type: ChampionType = 'Yi') {
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    type: ChampionType = 'Yi',
+    floorCenter: { x: number; y: number } = LEVEL1.floorCenter,
+  ) {
     const config = type === 'Yi' ? YI_CONFIG : ZED_CONFIG;
     super(scene, x, y, `${type}_${config.locomotionAnim}`, 0);
 
@@ -65,8 +71,8 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     scene.add.existing(this);
 
     // Initial direction facing towards arena floor center
-    const dx = LEVEL1.floorCenter.x - x;
-    const dy = LEVEL1.floorCenter.y - y;
+    const dx = floorCenter.x - x;
+    const dy = floorCenter.y - y;
     this.currentDir = this.computeDirection(dx, dy);
 
     // Start locomotion animation with desynchronized cycle
@@ -142,17 +148,37 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       if (this.isActing) {
         // Stationary while executing an attack
         this.isMoving = false;
-      } else if (distToPlayer <= this.attackRange && this.attackCooldown <= 0) {
-        // Close enough: stop and execute an attack
+      } else if (
+        distToPlayer <= this.attackRange &&
+        this.attackCooldown <= 0 &&
+        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 10))
+      ) {
+        // Close enough and clear line of sight: stop and execute an attack
         this.triggerAttack(playerX, playerY);
       } else {
         // Move towards player using locomotion animation
         this.isMoving = true;
         this.currentAnimKey = this.config.locomotionAnim;
 
-        // Blend direct player pursuit with crowd separation force
-        let vx = dx / (distToPlayer || 1);
-        let vy = dy / (distToPlayer || 1);
+        const rx = this.championType === 'Zed' ? 16 : 10;
+        const ry = this.championType === 'Zed' ? 8 : 5;
+
+        // Steer towards player: direct pursuit if line of sight is clear, or navigate around obstacles
+        let targetX = playerX;
+        let targetY = playerY;
+        if (area && this.hasEnteredArena) {
+          const steer = area.getSteeringTarget(this.x, this.y, playerX, playerY, rx);
+          targetX = steer.x;
+          targetY = steer.y;
+        }
+
+        const tdx = targetX - this.x;
+        const tdy = targetY - this.y;
+        const distToTarget = Math.hypot(tdx, tdy);
+
+        // Blend target pursuit with crowd separation force
+        let vx = tdx / (distToTarget || 1);
+        let vy = tdy / (distToTarget || 1);
 
         if (this.separationX !== 0 || this.separationY !== 0) {
           const sepWeight = 0.85;
@@ -168,8 +194,6 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
         const stepX = vx * this.walkSpeed * dt;
         const stepY = vy * this.walkSpeed * dt * 0.85;
-        const rx = this.championType === 'Zed' ? 16 : 10;
-        const ry = this.championType === 'Zed' ? 8 : 5;
 
         if (area) {
           if (!this.hasEnteredArena) {

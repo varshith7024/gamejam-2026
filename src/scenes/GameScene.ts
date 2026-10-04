@@ -3,9 +3,9 @@ import { Enemy } from '../entities/Enemy';
 import { Level1Environment, DEPTH } from '../environment/Level1Environment';
 import { Atmosphere } from '../effects/Atmosphere';
 import { LEVEL1 } from '../environment/level1Data';
+import type { LevelData } from '../environment/levelTypes';
 import { BALANCE } from '../config/balance';
 import { ChampionType } from '../config/championAnimations';
-import { TEXT } from '../config/text';
 
 type ActionState =
   | 'idle'
@@ -103,7 +103,11 @@ export class GameScene extends Phaser.Scene {
   private keyK!: Phaser.Input.Keyboard.Key;
   private keyG!: Phaser.Input.Keyboard.Key;
 
-  constructor(key: string = 'Game') {
+  /** `level` = which level's data (world, floor, props, atmosphere, roster) this scene plays. Level 1 by default. */
+  constructor(
+    key: string = 'Game',
+    protected level: LevelData = LEVEL1,
+  ) {
     super(key);
   }
 
@@ -123,8 +127,8 @@ export class GameScene extends Phaser.Scene {
     this.actionVelocity.set(0, 0);
 
     // Build environment and atmosphere
-    this.env = new Level1Environment(this);
-    this.atmosphere = new Atmosphere(this);
+    this.env = new Level1Environment(this, this.level);
+    this.atmosphere = new Atmosphere(this, this.level);
     this.atmosphere.create();
 
     // Setup Black Point overlay (modifies background only, depth = DEPTH.base + 0.1)
@@ -132,7 +136,7 @@ export class GameScene extends Phaser.Scene {
 
     // Create player sprite (origin at ground feet contact point)
     this.currentAimDir = 0; // Starts facing right (East)
-    this.player = this.add.sprite(LEVEL1.playerStart.x, LEVEL1.playerStart.y, 'Idle', 0);
+    this.player = this.add.sprite(this.level.playerStart.x, this.level.playerStart.y, 'Idle', 0);
     this.player.setOrigin(0.5, 0.78);
     this.player.setScale(1.1);
     this.player.setDepth(this.player.y);
@@ -243,7 +247,7 @@ export class GameScene extends Phaser.Scene {
     // Screen blend formula: Output = blackPoint + (1 - blackPoint) * Background
     // Lifts the black point of the background when blackPoint > 0 (scene gets brighter)
     this.blackPointOverlay = this.add
-      .rectangle(0, 0, LEVEL1.world.width, LEVEL1.world.height, 0xffffff)
+      .rectangle(0, 0, this.level.world.width, this.level.world.height, 0xffffff)
       .setOrigin(0, 0)
       .setDepth(DEPTH.base + 0.1)
       .setBlendMode(Phaser.BlendModes.SCREEN)
@@ -252,7 +256,7 @@ export class GameScene extends Phaser.Scene {
     // Black normal overlay to lower the white point when blackPoint < 0 (scene gets darker)
     // Formula: Output = (1 - darkness) * Background
     this.whitePointDarkOverlay = this.add
-      .rectangle(0, 0, LEVEL1.world.width, LEVEL1.world.height, 0x000000)
+      .rectangle(0, 0, this.level.world.width, this.level.world.height, 0x000000)
       .setOrigin(0, 0)
       .setDepth(DEPTH.base + 0.2)
       .setAlpha(0);
@@ -378,7 +382,7 @@ export class GameScene extends Phaser.Scene {
     const toCamY = (screenY: number) => height / 2 + (screenY - height / 2) / z;
 
     const title = this.add
-      .text(width / 2, toCamY(height * 0.42), TEXT.level1Title, {
+      .text(width / 2, toCamY(height * 0.42), this.level.title, {
         fontFamily: 'Georgia, serif',
         fontSize: '72px',
         color: '#ece8f4',
@@ -391,7 +395,7 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0);
 
     const sub = this.add
-      .text(width / 2, toCamY(height * 0.42 + 56), TEXT.level1Subtitle, {
+      .text(width / 2, toCamY(height * 0.42 + 56), this.level.subtitle, {
         fontFamily: 'Georgia, serif',
         fontSize: '22px',
         color: '#9a96b0',
@@ -518,13 +522,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnEnemyAtAngle(type: ChampionType, angleRad: number): Enemy {
-    const cx = LEVEL1.floorCenter.x;
-    const cy = LEVEL1.floorCenter.y;
-    const dist = 850;
-    const x = cx + Math.cos(angleRad) * dist;
-    const y = cy + Math.sin(angleRad) * (dist * 0.7);
+    const fc = this.level.floorCenter;
+    let x: number;
+    let y: number;
 
-    const enemy = new Enemy(this, x, y, type);
+    const entries = this.level.entries;
+    if (entries && entries.length > 0) {
+      // Levels with entry markers: use the entry whose bearing (seen from the floor centre) is closest to the wave's angle.
+      let best = entries[0];
+      let bestDiff = Infinity;
+      for (const e of entries) {
+        const diff = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(e.y - fc.y, e.x - fc.x) - angleRad));
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = e;
+        }
+      }
+      x = best.x + Phaser.Math.Between(-14, 14);
+      y = best.y + Phaser.Math.Between(-10, 10);
+    } else {
+      // Default (Level 1): a ring around the floor centre
+      const dist = 850;
+      x = fc.x + Math.cos(angleRad) * dist;
+      y = fc.y + Math.sin(angleRad) * (dist * 0.7);
+    }
+
+    const enemy = new Enemy(this, x, y, type, fc);
     this.enemies.push(enemy);
     this.waveGroupEnemies.push(enemy);
     return enemy;
@@ -568,7 +591,7 @@ export class GameScene extends Phaser.Scene {
     angles.forEach((angle, i) => {
       const t = this.time.delayedCall(i * 2000, () => {
         this.wavePendingSpawns--;
-        this.spawnEnemyAtAngle('Yi', angle);
+        this.spawnEnemyAtAngle(this.level.roster.light, angle);
       });
       this.waveTimerEvents.push(t);
     });
@@ -580,14 +603,14 @@ export class GameScene extends Phaser.Scene {
 
     // Spawn 2 Yis at 0s
     this.wavePendingSpawns -= 2;
-    this.spawnEnemyAtAngle('Yi', Math.PI * 0.25);
-    this.spawnEnemyAtAngle('Yi', Math.PI * 1.25);
+    this.spawnEnemyAtAngle(this.level.roster.light, Math.PI * 0.25);
+    this.spawnEnemyAtAngle(this.level.roster.light, Math.PI * 1.25);
 
     // Spawn 2 Yis at 6s
     const t = this.time.delayedCall(6000, () => {
       this.wavePendingSpawns -= 2;
-      this.spawnEnemyAtAngle('Yi', Math.PI * 0.75);
-      this.spawnEnemyAtAngle('Yi', Math.PI * 1.75);
+      this.spawnEnemyAtAngle(this.level.roster.light, Math.PI * 0.75);
+      this.spawnEnemyAtAngle(this.level.roster.light, Math.PI * 1.75);
     });
     this.waveTimerEvents.push(t);
   }
@@ -602,7 +625,7 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 5; i++) {
       const t = this.time.delayedCall(i * 1000, () => {
         this.wavePendingSpawns--;
-        this.spawnEnemyAtAngle('Yi', angles[i]);
+        this.spawnEnemyAtAngle(this.level.roster.light, angles[i]);
       });
       this.waveTimerEvents.push(t);
     }
@@ -611,7 +634,7 @@ export class GameScene extends Phaser.Scene {
     const tBoss = this.time.delayedCall(5000, () => {
       for (let j = 5; j < 8; j++) {
         this.wavePendingSpawns--;
-        this.spawnEnemyAtAngle('Zed', angles[j]);
+        this.spawnEnemyAtAngle(this.level.roster.heavy, angles[j]);
       }
     });
     this.waveTimerEvents.push(tBoss);
@@ -635,7 +658,7 @@ export class GameScene extends Phaser.Scene {
         this.wavePhase = 1;
         this.time.delayedCall(1200, () => {
           this.waveGroupEnemies = [];
-          this.spawnEnemyAtAngle('Zed', Math.PI * 0.5);
+          this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.5);
         });
       } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
         // Zed defeated -> Wave 1 Complete!
@@ -654,8 +677,8 @@ export class GameScene extends Phaser.Scene {
         this.wavePhase = 1;
         this.time.delayedCall(1200, () => {
           this.waveGroupEnemies = [];
-          this.spawnEnemyAtAngle('Zed', Math.PI * 0.5);
-          this.spawnEnemyAtAngle('Zed', Math.PI * 1.5);
+          this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 0.5);
+          this.spawnEnemyAtAngle(this.level.roster.heavy, Math.PI * 1.5);
         });
       } else if (this.wavePhase === 1 && this.waveGroupEnemies.every((e) => e.isDead)) {
         // Both Zeds defeated -> Wave 2 Complete!
@@ -675,6 +698,10 @@ export class GameScene extends Phaser.Scene {
           this.cornerWaveText.setText('VICTORY');
         }
         this.announceWave('VICTORY');
+        if (this.level.nextScene) {
+          const next = this.level.nextScene;
+          this.time.delayedCall(4500, () => this.scene.start(next));
+        }
       }
       return;
     }
@@ -753,7 +780,7 @@ export class GameScene extends Phaser.Scene {
   // ---------- Camera ----------
   private setupCamera() {
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, LEVEL1.world.width, LEVEL1.world.height);
+    cam.setBounds(0, 0, this.level.world.width, this.level.world.height);
     cam.setRoundPixels(true);
     cam.setZoom(BALANCE.level1CameraZoom);
     const t = this.cameraTarget();
@@ -763,8 +790,9 @@ export class GameScene extends Phaser.Scene {
   private cameraTarget() {
     const cam = this.cameras.main;
     const f = BALANCE.level1CameraFollow;
-    const cx = LEVEL1.floorCenter.x + (this.player.x - LEVEL1.floorCenter.x) * f;
-    const cy = LEVEL1.floorCenter.y + (this.player.y - LEVEL1.floorCenter.y) * f;
+    const fc = this.level.floorCenter;
+    const cx = fc.x + (this.player.x - fc.x) * f;
+    const cy = fc.y + (this.player.y - fc.y) * f;
     return {
       x: cam.clampX(cx - cam.width / 2),
       y: cam.clampY(cy - cam.height / 2),
@@ -1075,7 +1103,7 @@ export class GameScene extends Phaser.Scene {
     this.currentAction = 'idle';
     this.health = this.maxHealth;
     this.drawHealthBar();
-    this.player.setPosition(LEVEL1.playerStart.x, LEVEL1.playerStart.y);
+    this.player.setPosition(this.level.playerStart.x, this.level.playerStart.y);
     this.playDirectional('Idle', this.currentAimDir, false);
     if (this.playerGlowGround && this.playerGlowCore) {
       this.playerGlowGround.setVisible(true);
@@ -1124,6 +1152,11 @@ export class GameScene extends Phaser.Scene {
       // Player melee attack range
       if (dist > 95) continue;
 
+      // Cannot hit enemies through solid walls/blockers (e.g. through the central altar)
+      if (this.env.area && !this.env.area.hasLineOfSight(this.player.x, this.player.y, enemy.x, enemy.y, 8)) {
+        continue;
+      }
+
       // Check angle relative to player facing direction
       const angleToEnemy = Math.atan2(dy, dx);
       let degToEnemy = Phaser.Math.RadToDeg(angleToEnemy);
@@ -1133,11 +1166,11 @@ export class GameScene extends Phaser.Scene {
       let diff = Math.abs(degToEnemy - playerFacingDeg);
       if (diff > 180) diff = 360 - diff;
 
-      // 360-degree hit for spinning attacks, 85-degree forward cone for standard strikes
-      const isSpin =
-        this.player.anims.currentAnim?.key.startsWith('MeleeSpin_') ||
-        this.player.anims.currentAnim?.key.startsWith('Special1_');
-      if (isSpin || diff < 85) {
+      // The hero must face the enemy: enforce a 90-degree forward cone (+/- 45 degrees).
+      // Standard attacks (including left-click MeleeSpin combo finisher) only hit what is in front of the hero.
+      // Only dedicated 360-degree special abilities (e.g. Special1) hit in an all-around radius.
+      const is360Ability = this.player.anims.currentAnim?.key.startsWith('Special1_');
+      if (is360Ability || diff <= 45) {
         // Left click deals 1 damage (Yi dies in 2 hits, Zed dies in 4 hits)
         const killed = enemy.takeDamage(this.player.x, this.player.y, this.env.area, 1);
         if (killed) {

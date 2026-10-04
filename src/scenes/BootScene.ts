@@ -8,6 +8,8 @@ import {
 } from '../config/animations';
 import { YI_CONFIG, ZED_CONFIG } from '../config/championAnimations';
 import { Level1Environment } from '../environment/Level1Environment';
+import { LEVEL1 } from '../environment/level1Data';
+import { LEVEL2 } from '../environment/level2Data';
 import { Atmosphere } from '../effects/Atmosphere';
 import { resolveStartScene } from '../config/dev';
 
@@ -46,9 +48,11 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
-    // Preload Level 1 environment & atmospheric effects
-    Level1Environment.preload(this);
-    Atmosphere.preload(this);
+    // Preload each level's environment & atmospheric effects (same loaders, per-level data)
+    for (const level of [LEVEL1, LEVEL2]) {
+      Level1Environment.preload(this, level);
+      Atmosphere.preload(this, level);
+    }
     this.load.setPath('');
   }
 
