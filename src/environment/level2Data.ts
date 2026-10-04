@@ -93,12 +93,12 @@ export const LEVEL2: LevelData = {
    * (Shown as magenta circles in the debug overlay: press G or load with ?debug.)
    */
   entries: [
-    entry('stairs_nw', 322, 168),
-    entry('stairs_n', 775, 170),
-    entry('stairs_e', 1085, 338),
-    entry('stairs_se', 985, 548),
-    entry('stairs_s', 735, 562),
-    entry('stairs_sw', 432, 516),
+    entry('stairs_nw', 340, 185), // Top of north-west stairs (solid stone path player cannot access)
+    entry('stairs_n', 775, 175),  // Top of north stairs
+    entry('stairs_e', 1065, 350), // Top of east stairs
+    entry('stairs_se', 965, 525), // Top of south-east stairs
+    entry('stairs_s', 735, 550),  // Top of south stairs
+    entry('stairs_sw', 440, 500), // Top of south-west stairs
   ],
 
   // Level 2 enemy roster. PLACEHOLDER: the existing Yi / Zed stand in until the Level 2 enemies are added

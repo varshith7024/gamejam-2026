@@ -747,10 +747,9 @@ export class GameScene extends Phaser.Scene {
     let y: number;
 
     const entries = this.level.entries;
-    const perpAngle = angleRad + Math.PI / 2;
 
     if (entries && entries.length > 0) {
-      // Levels with entry markers: use the entry whose bearing (seen from the floor centre) is closest to the wave's angle.
+      // Find the entry (stairs / doorway) whose bearing is closest to the wave's angle
       let best = entries[0];
       let bestDiff = Infinity;
       for (const e of entries) {
@@ -760,13 +759,21 @@ export class GameScene extends Phaser.Scene {
           best = e;
         }
       }
-      x = best.x + Math.cos(perpAngle) * offsetDist + Phaser.Math.Between(-14, 14);
-      y = best.y + Math.sin(perpAngle) * (offsetDist * 0.7) + Phaser.Math.Between(-10, 10);
+
+      // Angle pointing outward along the stairs / doorway (away from arena floor center)
+      const angleFromCenter = Math.atan2(best.y - fc.y, best.x - fc.x);
+      // Stagger enemies along the stair depth (step by step up the stairs) so they march down in sequence
+      const depthOffset = offsetDist * 0.55;
+      // Keep lateral offset narrow (+/- 4px) so enemies stay centered on the solid stone staircase
+      const perpAngle = angleFromCenter + Math.PI / 2;
+      const perpOffset = Math.sign(offsetDist) * Math.min(4, Math.abs(offsetDist) * 0.08);
+
+      x = best.x + Math.cos(angleFromCenter) * depthOffset + Math.cos(perpAngle) * perpOffset + Phaser.Math.Between(-2, 2);
+      y = best.y + Math.sin(angleFromCenter) * depthOffset + Math.sin(perpAngle) * perpOffset + Phaser.Math.Between(-2, 2);
     } else {
-      // Default (Level 1): a ring around the floor centre
-      const dist = 850;
-      x = fc.x + Math.cos(angleRad) * dist + Math.cos(perpAngle) * offsetDist;
-      y = fc.y + Math.sin(angleRad) * (dist * 0.7) + Math.sin(perpAngle) * (offsetDist * 0.7);
+      const dist = 360;
+      x = fc.x + Math.cos(angleRad) * dist;
+      y = fc.y + Math.sin(angleRad) * (dist * 0.65);
     }
 
     const enemy = new Enemy(this, x, y, type, fc);
