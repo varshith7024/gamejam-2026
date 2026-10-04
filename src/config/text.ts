@@ -8,6 +8,4 @@ export const TEXT = {
   level1Subtitle: 'Visual prototype',
   level2Title: 'THE CONDUIT',
   level2Subtitle: 'Where the light is drawn',
-  level1Controls: 'WASD move   |   G collision debug',
-  controls: 'WASD move   |   Mouse aim + hold click to shoot   |   SPACE dash',
 };
