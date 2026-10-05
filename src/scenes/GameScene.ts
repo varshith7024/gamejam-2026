@@ -183,6 +183,14 @@ export class GameScene extends Phaser.Scene {
   private uTitleText?: Phaser.GameObjects.Text;
   private uBadgeText?: Phaser.GameObjects.Text;
 
+  // Boss Health Bar (Level 3 - Executioner)
+  private bossEnemy?: Enemy;
+  private bossHealthContainer?: Phaser.GameObjects.Container;
+  private bossHpBgGfx?: Phaser.GameObjects.Graphics;
+  private bossHpFillGfx?: Phaser.GameObjects.Graphics;
+  private bossHpText?: Phaser.GameObjects.Text;
+  private bossTitleText?: Phaser.GameObjects.Text;
+
   // Controls Tutorial Popup (Level 1)
   private controlsPopupContainer?: Phaser.GameObjects.Container;
   private isControlsPopupOpen = false;
@@ -294,6 +302,15 @@ export class GameScene extends Phaser.Scene {
     this.uText = undefined;
     this.uTitleText = undefined;
     this.uBadgeText = undefined;
+    if (this.bossHealthContainer) {
+      this.bossHealthContainer.destroy();
+      this.bossHealthContainer = undefined;
+    }
+    this.bossEnemy = undefined;
+    this.bossHpBgGfx = undefined;
+    this.bossHpFillGfx = undefined;
+    this.bossHpText = undefined;
+    this.bossTitleText = undefined;
     this.controlsPopupContainer = undefined;
     this.isControlsPopupOpen = false;
     this.cooldownBarsGfx = undefined;
@@ -616,6 +633,140 @@ export class GameScene extends Phaser.Scene {
         this.hpText.setColor('#ff4d4d');
       } else {
         this.hpText.setColor('#ffffff');
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------
+  // BOSS HEALTH BAR & TITLE (LEVEL 3 - EXECUTIONER)
+  // -----------------------------------------------------------------
+  private setupBossHealthBar() {
+    if (this.bossHealthContainer) {
+      this.bossHealthContainer.destroy();
+    }
+
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
+    const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
+
+    const barW = 460;
+    const barH = 14;
+
+    const container = this.add.container(toCamX(width / 2), toCamY(30));
+    this.bossHealthContainer = container;
+    container.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10).setAlpha(0);
+
+    this.bossHpBgGfx = this.add.graphics();
+    this.bossHpFillGfx = this.add.graphics();
+
+    // Text "EXECUTIONER" positioned directly below the health bar
+    this.bossTitleText = this.add.text(0, barH + 9, 'EXECUTIONER', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#f5ebd0',
+      letterSpacing: 6,
+    }).setOrigin(0.5, 0);
+    this.bossTitleText.setShadow(0, 2, '#4c0519', 8, true, true);
+
+    // HP readout text centered inside the health bar
+    this.bossHpText = this.add.text(0, barH / 2, '', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '9.5px',
+      fontStyle: 'bold',
+      color: '#ffffff',
+      letterSpacing: 1,
+    }).setOrigin(0.5, 0.5);
+    this.bossHpText.setShadow(0, 1, '#1f060d', 4, true, true);
+
+    container.add([this.bossHpBgGfx, this.bossHpFillGfx, this.bossTitleText, this.bossHpText]);
+
+    this.drawBossHealthBar();
+  }
+
+  private drawBossHealthBar() {
+    if (!this.bossHpBgGfx || !this.bossHpFillGfx || !this.bossEnemy) return;
+
+    const barW = 460;
+    const barH = 14;
+    const halfW = barW / 2;
+
+    const maxHp = this.bossEnemy.maxHp || 60;
+    const currentHp = Math.max(0, this.bossEnemy.currentHp);
+    const frac = Phaser.Math.Clamp(currentHp / maxHp, 0, 1);
+
+    this.bossHpBgGfx.clear();
+
+    // 1. Dark Gothic Ironplate Frame with Stepped Border
+    this.bossHpBgGfx.fillStyle(0x060102, 0.95);
+    this.bossHpBgGfx.fillRect(-halfW - 3, -2, barW + 6, barH + 4);
+
+    this.bossHpBgGfx.lineStyle(1.5, 0x1f060d, 1.0);
+    this.bossHpBgGfx.strokeRect(-halfW - 3, -2, barW + 6, barH + 4);
+    this.bossHpBgGfx.lineStyle(1, 0x5a1827, 0.85);
+    this.bossHpBgGfx.strokeRect(-halfW - 4, -3, barW + 8, barH + 6);
+
+    // End diamond accents in antique gold
+    for (const dx of [-halfW - 5, halfW + 5]) {
+      this.bossHpBgGfx.fillStyle(0xc29b38, 0.95);
+      this.bossHpBgGfx.beginPath();
+      this.bossHpBgGfx.moveTo(dx, barH / 2 - 4);
+      this.bossHpBgGfx.lineTo(dx + (dx > 0 ? 4 : -4), barH / 2);
+      this.bossHpBgGfx.lineTo(dx, barH / 2 + 4);
+      this.bossHpBgGfx.lineTo(dx - (dx > 0 ? 4 : -4), barH / 2);
+      this.bossHpBgGfx.closePath();
+      this.bossHpBgGfx.fillPath();
+    }
+
+    // Inner empty slot (dark abyss)
+    this.bossHpBgGfx.fillStyle(0x130206, 1.0);
+    this.bossHpBgGfx.fillRect(-halfW, 0, barW, barH);
+
+    // Inner top/left shadow
+    this.bossHpBgGfx.fillStyle(0x040001, 0.8);
+    this.bossHpBgGfx.fillRect(-halfW, 0, barW, 1);
+    this.bossHpBgGfx.fillRect(-halfW, 0, 1, barH);
+
+    // 2. Pixelated & Shaded Ruby Red Boss Fill
+    this.bossHpFillGfx.clear();
+    const innerW = Math.round(barW * frac);
+
+    if (innerW > 0) {
+      const fx = -halfW;
+      const fy = 0;
+      const fh = barH;
+
+      // Layer 1: Rose quartz highlight gloss (2px)
+      this.bossHpFillGfx.fillStyle(0xfecdd3, 0.95);
+      this.bossHpFillGfx.fillRect(fx, fy, innerW, 2);
+
+      // Layer 2: Vibrant ruby core (3px)
+      this.bossHpFillGfx.fillStyle(0xf43f5e, 1.0);
+      this.bossHpFillGfx.fillRect(fx, fy + 2, innerW, 3);
+
+      // Layer 3: Deep crimson mid (4px)
+      this.bossHpFillGfx.fillStyle(0xbe123c, 1.0);
+      this.bossHpFillGfx.fillRect(fx, fy + 5, innerW, 4);
+
+      // Layer 4: Burgundy shadow base
+      this.bossHpFillGfx.fillStyle(0x881337, 1.0);
+      this.bossHpFillGfx.fillRect(fx, fy + 9, innerW, Math.max(1, fh - 9));
+
+      // Segment tick notches every 35px
+      this.bossHpFillGfx.fillStyle(0x2e050f, 0.65);
+      for (let s = 35; s < innerW; s += 35) {
+        this.bossHpFillGfx.fillRect(fx + s, fy, 1, fh);
+      }
+    }
+
+    // 3. HP Text Readout
+    if (this.bossHpText) {
+      this.bossHpText.setText(`${Math.max(0, Math.ceil(currentHp))} / ${maxHp}`);
+      if (frac <= 0.25) {
+        this.bossHpText.setColor('#ff4d4d');
+      } else {
+        this.bossHpText.setColor('#ffffff');
       }
     }
   }
@@ -1624,14 +1775,15 @@ export class GameScene extends Phaser.Scene {
     const waveRoman = romanNums[waveNum] || `${waveNum}`;
 
     if (this.cornerWaveText) {
-      this.cornerWaveText.setText(`WAVE ${waveRoman}`);
+      if (this.level.id === 'level3') {
+        this.cornerWaveText.setText('');
+      } else {
+        this.cornerWaveText.setText(`WAVE ${waveRoman}`);
+      }
     }
 
     if (waveNum === 1) {
       if (this.level.id === 'level3') {
-        this.time.delayedCall(2200, () => {
-          this.announceWave('THE EXECUTIONER');
-        });
         this.startWave1();
       } else {
         // Delay wave 1 announcement slightly so "The Veil" title card displays first
@@ -1659,6 +1811,22 @@ export class GameScene extends Phaser.Scene {
       const boss = new Enemy(this, bossX, bossY, 'Boss', this.level.floorCenter);
       this.enemies.push(boss);
       this.waveGroupEnemies.push(boss);
+      this.bossEnemy = boss;
+
+      // Setup boss health bar (hidden with alpha 0)
+      this.setupBossHealthBar();
+
+      // Fade it in after the sprite appears after a 1 second delay
+      this.time.delayedCall(1000, () => {
+        if (this.bossHealthContainer && this.bossHealthContainer.active) {
+          this.tweens.add({
+            targets: this.bossHealthContainer,
+            alpha: 1,
+            duration: 800,
+            ease: 'Quad.easeOut',
+          });
+        }
+      });
       return;
     }
 
@@ -2022,6 +2190,14 @@ export class GameScene extends Phaser.Scene {
       if (this.wavePendingSpawns === 0 && activeInGroup.length === 0 && this.waveGroupEnemies.length > 0) {
         if (this.wavePhase === 0) {
           this.wavePhase = 1;
+          if (this.bossHealthContainer) {
+            this.tweens.add({
+              targets: this.bossHealthContainer,
+              alpha: 0,
+              duration: 1200,
+              ease: 'Quad.easeOut',
+            });
+          }
           if (this.cornerWaveText) {
             this.cornerWaveText.setText('VICTORY');
           }
@@ -2375,6 +2551,11 @@ export class GameScene extends Phaser.Scene {
 
     // Check enemy attacks hitting player
     this.checkEnemyAttackHit(dt);
+
+    // Update boss health bar if present
+    if (this.bossEnemy) {
+      this.drawBossHealthBar();
+    }
 
     // Update background black point decay (only when enemies are on screen)
     this.updateBlackPoint(dt);
@@ -3150,6 +3331,7 @@ export class GameScene extends Phaser.Scene {
     if (this.scoreContainer) hudTargets.push(this.scoreContainer);
     if (this.scoreText) hudTargets.push(this.scoreText);
     if (this.lightLevelText) hudTargets.push(this.lightLevelText);
+    if (this.bossHealthContainer) hudTargets.push(this.bossHealthContainer);
     for (const p of this.killPopups) {
       if (p.text) hudTargets.push(p.text);
     }

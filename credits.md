@@ -9,5 +9,11 @@ Ability icons:
 https://opengameart.org/content/sword-normal
 
 todo:
-add health orbs
-add powerup orbs
+music/sfx
+level transitions
+cutscenes
+level 3 map + enemies
+higher res
+better looking texture
+match UI to sprites
+sprites getting stuck behind props
