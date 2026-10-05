@@ -19,6 +19,7 @@ export const LEVEL3: LevelData = {
   subtitle: 'Boss Chamber',
   assetBase: 'assets/level3/',
   masterFile: 'level3_master.png',
+  initialLightLevel: 0.20, // Level 3 starts at 20%
   world: { width: 1538, height: 1023 },
   floorCenter: p(769, 511),
   playerStart: p(769, 720), // Player enters from the south

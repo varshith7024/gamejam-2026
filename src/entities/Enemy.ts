@@ -107,9 +107,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.maxHp = config.maxHp;
     this.currentHp = this.maxHp;
     this.attackRange =
-      type === 'Boss' ? 115 : type === 'Enemy3' ? 44 : type === 'Zed' ? 68 : 50;
+      type === 'Boss' ? 55 : type === 'Enemy3' ? 44 : type === 'Zed' ? 68 : 50;
     this.stopDistance =
-      type === 'Boss' ? 80 : type === 'Enemy3' ? 28 : type === 'Zed' ? 52 : 36;
+      type === 'Boss' ? 42 : type === 'Enemy3' ? 28 : type === 'Zed' ? 52 : 36;
     this.attackDamage =
       type === 'Boss' ? 15 : type === 'Enemy3' ? 5 : type === 'Zed' ? 5 : 1;
     this.attackCooldownDuration =
@@ -515,7 +515,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         this.isMoving = false;
       } else {
         const isHolding = this.currentAnimKey === 'idle';
-        const resumeWalkThreshold = this.stopDistance + (this.championType === 'Boss' ? 35 : 15);
+        const resumeWalkThreshold = this.stopDistance + (this.championType === 'Boss' ? 12 : 15);
         const inHoldRange = isHolding ? distToPlayer <= resumeWalkThreshold : distToPlayer <= this.stopDistance;
 
         const targetFaceDir = this.computeDirection(dx, dy);
@@ -687,6 +687,15 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     if (this.currentHp <= 0) {
       this.die(fromX, fromY, knockbackDist);
       return true; // Monster killed
+    }
+
+    if (this.championType === 'Boss') {
+      // Boss has relentless poise: taking damage does NOT stun, stagger, or interrupt him
+      this.setTintFill(0xffffff);
+      this.scene.time.delayedCall(80, () => {
+        if (!this.isDead) this.clearTint();
+      });
+      return false;
     }
 
     this.stumble(fromX, fromY, area, knockbackDist, stunDuration);
@@ -961,7 +970,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   public getCollisionRadius(): number {
-    if (this.championType === 'Boss') return 32;
+    if (this.championType === 'Boss') return 16;
     if (this.championType === 'Enemy3') return 10;
     return this.championType === 'Zed' ? 24 : 14;
   }

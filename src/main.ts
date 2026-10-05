@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
+import { MainMenuScene } from './scenes/MainMenuScene';
 import { GameScene } from './scenes/GameScene';
 import { Level1Scene } from './scenes/Level1Scene';
 import { Level2Scene } from './scenes/Level2Scene';
 import { Level3Scene } from './scenes/Level3Scene';
+import { GameOverScene } from './scenes/GameOverScene';
 
 (window as unknown as { game: Phaser.Game }).game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -20,5 +22,5 @@ import { Level3Scene } from './scenes/Level3Scene';
     width: 1280,
     height: 720,
   },
-  scene: [BootScene, GameScene, Level1Scene, Level2Scene, Level3Scene],
+  scene: [BootScene, MainMenuScene, GameScene, Level1Scene, Level2Scene, Level3Scene, GameOverScene],
 });

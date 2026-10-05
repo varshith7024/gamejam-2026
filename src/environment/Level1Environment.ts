@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { WalkableArea, ellipsePolygon, type Pt } from './Collision';
 import { LEVEL1 } from './level1Data';
 import type { LevelData } from './levelTypes';
+import { ColorCurvePipeline } from '../shaders/ColorCurvePipeline';
 
 // Texture keys are namespaced by level id so several levels can be preloaded side by side.
 const masterKey = (l: LevelData) => `${l.id}_master`;
@@ -28,8 +29,12 @@ const animKey = (l: LevelData) => `${l.id}_anims`;
  */
 export class Level1Environment {
   readonly area: WalkableArea;
+  public bgImage!: Phaser.GameObjects.Image;
   private debugGfx?: Phaser.GameObjects.Graphics;
   private sortLines: { x0: number; x1: number; y: number }[] = [];
+  private propImages: Phaser.GameObjects.Image[] = [];
+  private animatedSprites: Phaser.GameObjects.Sprite[] = [];
+  private occluderImages: Phaser.GameObjects.Image[] = [];
   private propOverlays: Phaser.GameObjects.Image[] = [];
   private propDarkOverlays: Phaser.GameObjects.Image[] = [];
 
@@ -75,11 +80,17 @@ export class Level1Environment {
 
   private build() {
     const { width, height } = this.level.world;
-    this.scene.add
+    const isWebGL = this.scene.renderer instanceof Phaser.Renderer.WebGL.WebGLRenderer;
+
+    this.bgImage = this.scene.add
       .image(0, 0, masterKey(this.level))
       .setOrigin(0, 0)
       .setDepth(DEPTH.base)
       .setDisplaySize(width, height);
+
+    if (isWebGL) {
+      this.bgImage.setPostPipeline(ColorCurvePipeline);
+    }
 
     // Props: origin sits on the ground-contact point, depth = ground Y so the player sorts in front/behind.
     for (const p of this.level.props) {
@@ -89,6 +100,10 @@ export class Level1Environment {
         .setOrigin(0.5, 0.86)
         .setScale(p.scale);
       img.setDepth(depth);
+      if (isWebGL) {
+        img.setPostPipeline(ColorCurvePipeline);
+      }
+      this.propImages.push(img);
       if (!p.flat) this.sortLines.push({ x0: p.x - 30, x1: p.x + 30, y: p.y });
 
       // Prop blackpoint screen overlay: warm daylight screen over prop (brightening without washing out)
@@ -131,16 +146,25 @@ export class Level1Environment {
           .setOrigin(0, 0)
           .setDepth(a.sortY === null ? DEPTH.base + 1 : a.sortY + 0.52);
         sprite.play(a.key);
+        if (isWebGL) {
+          sprite.setPostPipeline(ColorCurvePipeline);
+        }
+        this.animatedSprites.push(sprite);
       }
     }
 
     // Occluders: pieces of the master drawn again ABOVE the player while the player is behind them.
     const list = this.scene.cache.json.get(manifestKey(this.level)) as OccluderEntry[];
     for (const o of list) {
-      this.scene.add
+      const occImg = this.scene.add
         .image(o.x, o.y, o.key)
         .setOrigin(0, 0)
         .setDepth(o.sortY + 0.5);
+      if (isWebGL) {
+        occImg.setPostPipeline(ColorCurvePipeline);
+      }
+      this.occluderImages.push(occImg);
+
       this.sortLines.push({
         x0: o.x,
         x1: o.x + this.scene.textures.get(o.key).getSourceImage().width,
@@ -166,10 +190,25 @@ export class Level1Environment {
         .setAlpha(0);
       this.propDarkOverlays.push(occDarkOverlay);
     }
+
+    this.setBlackPoint(this.level.initialLightLevel ?? -0.50);
   }
 
-  /** Update the black point lift / white point drop across all level props and occluders */
+  /** Update the color curve filter / black point lift across all level props and occluders */
   setBlackPoint(value: number) {
+    ColorCurvePipeline.setLightLevel(value);
+
+    const isWebGL = this.scene.renderer instanceof Phaser.Renderer.WebGL.WebGLRenderer;
+    if (isWebGL) {
+      for (let i = 0; i < this.propOverlays.length; i++) {
+        this.propOverlays[i].setAlpha(0);
+      }
+      for (let i = 0; i < this.propDarkOverlays.length; i++) {
+        this.propDarkOverlays[i].setAlpha(0);
+      }
+      return;
+    }
+
     if (value >= 0) {
       for (let i = 0; i < this.propOverlays.length; i++) {
         this.propOverlays[i].setAlpha(value);

@@ -6,6 +6,7 @@ import { LEVEL1 } from '../environment/level1Data';
 import type { LevelData } from '../environment/levelTypes';
 import { BALANCE } from '../config/balance';
 import { ChampionType, ORB_CONFIG } from '../config/championAnimations';
+import { ColorCurvePipeline } from '../shaders/ColorCurvePipeline';
 
 type ActionState =
   | 'idle'
@@ -52,6 +53,15 @@ interface ShockwaveRing {
   hitEnemies: Set<Enemy>;
   gfx: Phaser.GameObjects.Graphics;
   active: boolean;
+}
+
+interface CooldownRowItem {
+  key: string;
+  name: string;
+  maxCd: number;
+  icon?: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
+  keyText: Phaser.GameObjects.Text;
+  statusText: Phaser.GameObjects.Text;
 }
 
 const BASIC_ATTACK_PROFILE: AttackProfile = {
@@ -131,9 +141,11 @@ export class GameScene extends Phaser.Scene {
   private healthContainer!: Phaser.GameObjects.Container;
   private hpBgGfx!: Phaser.GameObjects.Graphics;
   private hpFillGfx!: Phaser.GameObjects.Graphics;
+  private hpText!: Phaser.GameObjects.Text;
 
   // Brightening & Black Point / White Point Mechanic
-  public blackPoint = 0.0; // -0.50 to +0.35 (-50% to +35%)
+  public blackPoint = -0.50; // -0.50 to +0.35 (-50% to +35%)
+  public targetBlackPoint = -0.50;
   private blackPointOverlay!: Phaser.GameObjects.Rectangle;
   private whitePointDarkOverlay!: Phaser.GameObjects.Rectangle;
 
@@ -146,7 +158,10 @@ export class GameScene extends Phaser.Scene {
   private cornerWaveText!: Phaser.GameObjects.Text;
   private lightLevelText!: Phaser.GameObjects.Text;
   public score = 0;
+  private scoreContainer!: Phaser.GameObjects.Container;
+  private scoreBannerGfx!: Phaser.GameObjects.Graphics;
   private scoreText!: Phaser.GameObjects.Text;
+  private scoreDetailsText!: Phaser.GameObjects.Text;
   private killPopups: {
     text: Phaser.GameObjects.Text;
     timerEvent?: Phaser.Time.TimerEvent;
@@ -155,13 +170,26 @@ export class GameScene extends Phaser.Scene {
   private waveAnnounceTitle: Phaser.GameObjects.Text | null = null;
   private waveAnnounceSub: Phaser.GameObjects.Text | null = null;
 
-  // Top-Right Cooldown HUD
-  private cooldownContainer!: Phaser.GameObjects.Container;
-  private cooldownBarsGfx!: Phaser.GameObjects.Graphics;
-  private cooldownKeyTexts: Phaser.GameObjects.Text[] = [];
-  private cooldownNameTexts: Phaser.GameObjects.Text[] = [];
+  // Ability Cooldown Bars (Bottom-Right)
+  private cooldownContainer?: Phaser.GameObjects.Container;
+  private cooldownBarsGfx?: Phaser.GameObjects.Graphics;
+  private cooldownRows: CooldownRowItem[] = [];
+
+  // Ability U separate HUD bar (Bottom-Center)
+  private uContainer?: Phaser.GameObjects.Container;
+  private uFrameImage?: Phaser.GameObjects.Image;
+  private uBarGfx?: Phaser.GameObjects.Graphics;
+  private uText?: Phaser.GameObjects.Text;
+  private uTitleText?: Phaser.GameObjects.Text;
+  private uBadgeText?: Phaser.GameObjects.Text;
+
+  // Controls Tutorial Popup (Level 1)
+  private controlsPopupContainer?: Phaser.GameObjects.Container;
+  private isControlsPopupOpen = false;
 
   // Ability Cooldowns & Sprint Running Timer
+  public cooldownDash = 0;
+  public readonly maxCooldownDash = 1.0;
   public sprintTimer = 0;
   public readonly SPRINT_REQ = 0.75;
   public cooldownQ = 0;
@@ -180,8 +208,8 @@ export class GameScene extends Phaser.Scene {
   public pointsTowardsX = 0;
   private activeOrbs: LightOrb[] = [];
 
-  // Ability U (Concentric Shockwaves): unlocked every 10000 points, 10s cooldown
-  public readonly REQ_POINTS_U = 10000;
+  // Ability U (Concentric Shockwaves): unlocked every 7500 points (75% of original), 10s cooldown
+  public readonly REQ_POINTS_U = 7500;
   public readonly maxCooldownU = 10.0;
   public cooldownU = 0;
   public pointsTowardsU = 0;
@@ -245,21 +273,48 @@ export class GameScene extends Phaser.Scene {
     super(key);
   }
 
-  create() {
-    this.cameras.main.setBackgroundColor('#000000');
-    this.input.mouse?.disableContextMenu();
+  init() {
+    this.resetSceneState();
+  }
 
-    // Reset combat and wave state
-    Enemy.currentTeleporter = null;
+  private resetSceneState() {
+    this.lightLevelText = undefined as unknown as Phaser.GameObjects.Text;
+    this.scoreText = undefined as unknown as Phaser.GameObjects.Text;
+    this.scoreDetailsText = undefined as unknown as Phaser.GameObjects.Text;
+    this.scoreContainer = undefined as unknown as Phaser.GameObjects.Container;
+    this.healthContainer = undefined as unknown as Phaser.GameObjects.Container;
+    this.uContainer = undefined;
+    this.uFrameImage = undefined;
+    this.cooldownContainer = undefined;
+    this.cornerWaveText = undefined as unknown as Phaser.GameObjects.Text;
+    this.hpBgGfx = undefined as unknown as Phaser.GameObjects.Graphics;
+    this.hpFillGfx = undefined as unknown as Phaser.GameObjects.Graphics;
+    this.hpText = undefined as unknown as Phaser.GameObjects.Text;
+    this.uBarGfx = undefined;
+    this.uText = undefined;
+    this.uTitleText = undefined;
+    this.uBadgeText = undefined;
+    this.controlsPopupContainer = undefined;
+    this.isControlsPopupOpen = false;
+    this.cooldownBarsGfx = undefined;
+    this.blackPointOverlay = undefined as unknown as Phaser.GameObjects.Rectangle;
+    this.whitePointDarkOverlay = undefined as unknown as Phaser.GameObjects.Rectangle;
+    this.killPopups = [];
     this.enemies = [];
     this.waveGroupEnemies = [];
     this.waveTimerEvents = [];
+    this.activeOrbs = [];
+    this.activeShockwaves = [];
+    this.cooldownRows = [];
+    this.score = 0;
     this.health = this.maxHealth;
     this.timeSinceLastDamage = this.REGEN_DELAY;
-    this.blackPoint = 0.0;
     this.isDead = false;
+    this.isCastingShockwave = false;
+    this.attackComboStep = 0;
     this.enemyHitCooldown = 0;
     this.sprintTimer = 0;
+    this.cooldownDash = 0;
     this.cooldownQ = 0;
     this.cooldownE = 0;
     this.cooldownV = 0;
@@ -268,11 +323,23 @@ export class GameScene extends Phaser.Scene {
     this.cooldownU = 0;
     this.pointsTowardsX = 0;
     this.pointsTowardsU = 0;
-    this.isCastingShockwave = false;
-    this.activeOrbs = [];
-    this.activeShockwaves = [];
     this.currentAction = 'idle';
     this.actionVelocity.set(0, 0);
+    Enemy.currentTeleporter = null;
+  }
+
+  create() {
+    this.resetSceneState();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.resetSceneState();
+    });
+
+    this.cameras.main.setBackgroundColor('#000000');
+    this.input.mouse?.disableContextMenu();
+
+    const initialLight = this.level.initialLightLevel ?? (this.level.id === 'level3' ? 0.20 : this.level.id === 'level2' ? -0.10 : -0.50);
+    this.blackPoint = initialLight;
+    this.targetBlackPoint = initialLight;
 
     // Build environment and atmosphere
     this.env = new Level1Environment(this, this.level);
@@ -282,6 +349,7 @@ export class GameScene extends Phaser.Scene {
 
     // Setup Black Point overlay (modifies background only, depth = DEPTH.base + 0.1)
     this.createBlackPointOverlay();
+    this.applyBlackPoint();
 
     // Create player sprite (origin at ground feet contact point)
     this.currentAimDir = 0; // Starts facing right (East)
@@ -295,12 +363,16 @@ export class GameScene extends Phaser.Scene {
     this.setupAnimationCallbacks();
     this.setupCamera();
     this.setupHealthBar();
+    this.setupUBar();
     this.setupWaveUI();
     this.setupCooldownHUD();
-    this.showTitleCard();
-
-    // Start Wave Progression
-    this.startWave(1);
+    if (this.level.id === 'level1') {
+      this.showControlsPopup();
+    } else {
+      this.showTitleCard();
+      // Start Wave Progression
+      this.startWave(1);
+    }
 
     // Debug mode (?debug in URL)
     if (new URLSearchParams(window.location.search).has('debug')) {
@@ -353,40 +425,87 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyBlackPoint() {
-    if (this.blackPoint >= 0) {
-      this.blackPointOverlay.setAlpha(this.blackPoint);
-      this.whitePointDarkOverlay.setAlpha(0);
+    const isWebGL = this.renderer instanceof Phaser.Renderer.WebGL.WebGLRenderer;
+    if (isWebGL) {
+      this.blackPointOverlay?.setAlpha(0);
+      this.whitePointDarkOverlay?.setAlpha(0);
     } else {
-      this.blackPointOverlay.setAlpha(0);
-      this.whitePointDarkOverlay.setAlpha(Math.abs(this.blackPoint));
+      if (this.blackPoint >= 0) {
+        this.blackPointOverlay?.setAlpha(this.blackPoint);
+        this.whitePointDarkOverlay?.setAlpha(0);
+      } else {
+        this.blackPointOverlay?.setAlpha(0);
+        this.whitePointDarkOverlay?.setAlpha(Math.abs(this.blackPoint));
+      }
     }
+
     if (this.env) {
       this.env.setBlackPoint(this.blackPoint);
+    } else {
+      ColorCurvePipeline.setLightLevel(this.blackPoint);
     }
-    if (this.lightLevelText) {
+
+    if (this.lightLevelText && this.lightLevelText.scene && this.lightLevelText.active) {
       const pct = Math.round(this.blackPoint * 100);
       const sign = pct > 0 ? '+' : '';
       this.lightLevelText.setText(`LIGHT ${sign}${pct}%`);
     }
+    this.updateScoreUI();
   }
 
   private updateBlackPoint(dt: number) {
-    // Decrease light level by 1% (0.01) per second when enemies are present
+    const baseLight = this.level.initialLightLevel ?? -0.50;
     const hasAliveEnemies = this.enemies.some((e) => !e.isDead);
     if (hasAliveEnemies) {
-      this.blackPoint = Math.max(-0.50, this.blackPoint - 0.01 * dt);
+      // Decrease light level by 1% (0.01) per second when enemies are present
+      this.targetBlackPoint = Math.max(baseLight, this.targetBlackPoint - 0.01 * dt);
     }
-    this.blackPoint = Math.min(0.35, this.blackPoint);
-    this.applyBlackPoint();
+    this.targetBlackPoint = Phaser.Math.Clamp(this.targetBlackPoint, -0.50, 0.35);
+
+    // Smoothly interpolate towards targetBlackPoint (frame-rate independent smooth transition)
+    const prevBlackPoint = this.blackPoint;
+    const lerpFactor = 1 - Math.exp(-3.5 * dt);
+    this.blackPoint = Phaser.Math.Linear(this.blackPoint, this.targetBlackPoint, lerpFactor);
+
+    if (Math.abs(this.blackPoint - this.targetBlackPoint) < 0.0005) {
+      this.blackPoint = this.targetBlackPoint;
+    }
+
+    if (Math.abs(this.blackPoint - prevBlackPoint) > 0.00005) {
+      this.applyBlackPoint();
+    }
   }
 
   public getBlackPoint(): number {
     return this.blackPoint;
   }
 
+  public getTargetBlackPoint(): number {
+    return this.targetBlackPoint;
+  }
+
+  /**
+   * Set custom control points (x0, y0), (x1, y1) and exponent directly on the grayscale color-curve filter.
+   */
+  public setColorCurveFilter(x0: number, y0: number, x1: number, y1: number, exponent = 1.0): void {
+    ColorCurvePipeline.setControlPoints(x0, y0, x1, y1, exponent);
+  }
+
+  public getColorCurveFilter(): { x0: number; y0: number; x1: number; y1: number; exponent: number } {
+    return {
+      x0: ColorCurvePipeline.x0,
+      y0: ColorCurvePipeline.y0,
+      x1: ColorCurvePipeline.x1,
+      y1: ColorCurvePipeline.y1,
+      exponent: ColorCurvePipeline.exponent,
+    };
+  }
+
   // -----------------------------------------------------------------
   // -----------------------------------------------------------------
-  // PLAYER HEALTH BAR (BLACK BAR WITH RED INNER BAR, BOTTOM-LEFT)
+  // -----------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // PIXELATED & SHADED HEALTH BAR (BOTTOM-LEFT)
   // -----------------------------------------------------------------
   private setupHealthBar() {
     const { width, height } = this.scale;
@@ -395,42 +514,562 @@ export class GameScene extends Phaser.Scene {
     const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
 
     // Anchor at bottom-left
-    this.healthContainer = this.add.container(toCamX(30), toCamY(height - 36));
+    this.healthContainer = this.add.container(toCamX(28), toCamY(height - 40));
     this.healthContainer.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
 
-    // Outer black bar
     this.hpBgGfx = this.add.graphics();
-
-    // Red inner bar
     this.hpFillGfx = this.add.graphics();
 
-    this.healthContainer.add([this.hpBgGfx, this.hpFillGfx]);
+    // Keybind/badge [ HP ] on left
+    const badgeGfx = this.add.graphics();
+    badgeGfx.fillStyle(0x180509, 0.95);
+    badgeGfx.fillRect(0, 0, 32, 18);
+    badgeGfx.lineStyle(1.5, 0x881337, 1.0);
+    badgeGfx.strokeRect(0, 0, 32, 18);
+
+    const badgeText = this.add.text(16, 9, 'HP', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#fca5a5',
+    }).setOrigin(0.5, 0.5);
+
+    // Centered health numbers
+    this.hpText = this.add.text(38 + 100, 9, `100 / 100`, {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#ffffff',
+      letterSpacing: 1,
+    }).setOrigin(0.5, 0.5);
+    this.hpText.setShadow(0, 1, '#4c0519', 4, true, true);
+
+    this.healthContainer.add([this.hpBgGfx, this.hpFillGfx, badgeGfx, badgeText, this.hpText]);
 
     this.drawHealthBar();
   }
 
   private drawHealthBar() {
+    if (!this.hpBgGfx || !this.hpFillGfx) return;
+
+    const barX = 38;
+    const barY = 0;
     const barW = 200;
-    const barH = 16;
-    const pad = 2;
+    const barH = 18;
     const frac = Phaser.Math.Clamp(this.health / this.maxHealth, 0, 1);
 
-    // 1. Black outer bar
     this.hpBgGfx.clear();
-    this.hpBgGfx.fillStyle(0x000000, 1);
-    this.hpBgGfx.fillRect(0, 0, barW, barH);
-    this.hpBgGfx.lineStyle(1, 0x1f1f1f, 1);
-    this.hpBgGfx.strokeRect(0, 0, barW, barH);
 
-    // 2. Red inner bar sized based on length
+    // 1. Pixelated 2px Stepped Dark Iron Frame
+    this.hpBgGfx.fillStyle(0x0a0204, 0.95);
+    this.hpBgGfx.fillRect(barX, barY, barW, barH);
+    this.hpBgGfx.lineStyle(2, 0x1f060d, 1.0);
+    this.hpBgGfx.strokeRect(barX, barY, barW, barH);
+    this.hpBgGfx.lineStyle(1, 0x5a1827, 0.85);
+    this.hpBgGfx.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+    // Inner empty slot (deep dark void)
+    this.hpBgGfx.fillStyle(0x130206, 1.0);
+    this.hpBgGfx.fillRect(barX + 2, barY + 2, barW - 4, barH - 4);
+
+    // Inner top/left shadow
+    this.hpBgGfx.fillStyle(0x060102, 0.8);
+    this.hpBgGfx.fillRect(barX + 2, barY + 2, barW - 4, 1);
+    this.hpBgGfx.fillRect(barX + 2, barY + 2, 1, barH - 4);
+
+    // 2. Pixelated & Shaded Ruby Red Fill
     this.hpFillGfx.clear();
-    const maxInnerW = barW - pad * 2;
+    const maxInnerW = barW - 4;
     const innerW = Math.round(maxInnerW * frac);
-    const innerH = barH - pad * 2;
+
     if (innerW > 0) {
-      this.hpFillGfx.fillStyle(0xd63031, 1);
-      this.hpFillGfx.fillRect(pad, pad, innerW, innerH);
+      const fx = barX + 2;
+      const fy = barY + 2;
+      const fh = barH - 4; // 14px
+
+      // Layer 1: Top highlight gloss line (2px)
+      this.hpFillGfx.fillStyle(0xfecdd3, 0.95);
+      this.hpFillGfx.fillRect(fx, fy, innerW, 2);
+
+      // Layer 2: Vibrant ruby core (4px)
+      this.hpFillGfx.fillStyle(0xf43f5e, 1.0);
+      this.hpFillGfx.fillRect(fx, fy + 2, innerW, 4);
+
+      // Layer 3: Deep crimson mid (5px)
+      this.hpFillGfx.fillStyle(0xbe123c, 1.0);
+      this.hpFillGfx.fillRect(fx, fy + 6, innerW, 5);
+
+      // Layer 4: Dark shadow base (3px)
+      this.hpFillGfx.fillStyle(0x881337, 1.0);
+      this.hpFillGfx.fillRect(fx, fy + 11, innerW, 3);
+
+      // Segment tick notches every 20px (10 segments)
+      this.hpFillGfx.fillStyle(0x2e050f, 0.7);
+      for (let s = 20; s < innerW; s += 20) {
+        this.hpFillGfx.fillRect(fx + s, fy, 1, fh);
+      }
     }
+
+    if (this.hpText) {
+      this.hpText.setText(`${Math.max(0, Math.ceil(this.health))} / ${this.maxHealth}`);
+      if (frac <= 0.25) {
+        this.hpText.setColor('#ff4d4d');
+      } else {
+        this.hpText.setColor('#ffffff');
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------
+  // -----------------------------------------------------------------
+  // ORNATE ULTIMATE BAR (U) WITH TRANSPARENT MIDDLE CUTOUT
+  // -----------------------------------------------------------------
+  // Frame natural dimensions: 2172 x 724
+  // Transparent slot: x=615, y=344, w=1325, h=78
+  // Orb medallion center: x=340, y=367
+  private readonly U_BAR_SCALE = 0.23;
+
+  private setupUBar() {
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
+    const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
+
+    const scale = this.U_BAR_SCALE;
+    const slotX = Math.round(615 * scale);  // 141
+    const slotY = Math.round(344 * scale);  // 79
+    const slotW = Math.round(1325 * scale); // 305
+    const slotH = Math.round(78 * scale);   // 18
+
+    const orbX = Math.round(340 * scale);   // 78
+    const orbY = Math.round(367 * scale);   // 84
+
+    const slotCenterX = slotX + slotW / 2;  // ~294
+    const slotCenterY = slotY + slotH / 2;  // ~88
+
+    // Center the slot horizontally on screen, and place slot near bottom (height - 38)
+    const screenX = Math.round(width / 2 - slotCenterX); // ~346
+    const screenY = Math.round(height - 38 - slotCenterY); // ~594
+
+    const container = this.add.container(toCamX(screenX), toCamY(screenY));
+    this.uContainer = container;
+    container.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
+
+    // Decorative top crest title
+    this.uTitleText = this.add.text(slotCenterX, slotY - 14, '❖   CELESTIAL NOVA   ❖', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#c7d2fe',
+      letterSpacing: 3,
+    }).setOrigin(0.5, 0.5);
+    this.uTitleText.setShadow(0, 1, '#1e3a8a', 4, true, true);
+
+    // 1. Graphics for fill, background & glow (drawn behind the ornate frame)
+    this.uBarGfx = this.add.graphics();
+
+    // 2. Ornate frame image (drawn on top of graphics so bronze filigree & gems overlay the fill)
+    this.uFrameImage = this.add.image(0, 0, 'ultimate_bar')
+      .setOrigin(0, 0)
+      .setScale(scale);
+
+    // 3. Keybind badge text [ U ] centered on the circular orb medallion
+    this.uBadgeText = this.add.text(orbX, orbY, 'U', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: '#ffd700',
+    }).setOrigin(0.5, 0.5);
+    this.uBadgeText.setShadow(0, 0, '#38bdf8', 8, true, true);
+
+    // 4. Status / readout text centered in the transparent slot
+    this.uText = this.add.text(slotCenterX, slotCenterY, '', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: '#ffffff',
+      letterSpacing: 1,
+    }).setOrigin(0.5, 0.5);
+
+    container.add([this.uTitleText, this.uBarGfx, this.uFrameImage, this.uBadgeText, this.uText]);
+
+    this.updateUBar();
+  }
+
+  private updateUBar() {
+    if (!this.uBarGfx || !this.uText) return;
+
+    this.uBarGfx.clear();
+
+    const scale = this.U_BAR_SCALE;
+    const slotX = Math.round(615 * scale);  // 141
+    const slotY = Math.round(344 * scale);  // 79
+    const slotW = Math.round(1325 * scale); // 305
+    const slotH = Math.round(78 * scale);   // 18
+    const orbX = Math.round(340 * scale);   // 78
+    const orbY = Math.round(367 * scale);   // 84
+
+    const isLocked = this.pointsTowardsU < this.REQ_POINTS_U;
+    const isOnCooldown = this.cooldownU > 0;
+    const isReady = !isLocked && !isOnCooldown;
+
+    let frac = 1.0;
+    if (isOnCooldown) {
+      frac = Phaser.Math.Clamp(1 - this.cooldownU / this.maxCooldownU, 0, 1);
+    } else if (isLocked) {
+      frac = Phaser.Math.Clamp(this.pointsTowardsU / this.REQ_POINTS_U, 0, 1);
+    }
+
+    // 1. Outer Backing Glow / Plate (behind frame)
+    if (isReady) {
+      // Brilliant pulsating cyan & gold outer aura behind the orb & slot
+      this.uBarGfx.fillStyle(0x06b6d4, 0.22);
+      this.uBarGfx.fillCircle(orbX, orbY, 44);
+      this.uBarGfx.fillStyle(0x38bdf8, 0.28);
+      this.uBarGfx.fillRoundedRect(slotX - 4, slotY - 4, slotW + 8, slotH + 8, 4);
+
+      if (this.uTitleText) {
+        this.uTitleText.setColor('#ffd700');
+        this.uTitleText.setShadow(0, 0, '#38bdf8', 12, true, true);
+      }
+      if (this.uBadgeText) {
+        this.uBadgeText.setColor('#ffffff');
+        this.uBadgeText.setShadow(0, 0, '#ffd700', 10, true, true);
+      }
+    } else {
+      if (this.uTitleText) {
+        this.uTitleText.setColor('#93c5fd');
+        this.uTitleText.setShadow(0, 1, '#1e3a8a', 4, true, true);
+      }
+      if (this.uBadgeText) {
+        this.uBadgeText.setColor('#93c5fd');
+        this.uBadgeText.setShadow(0, 0, '#000000', 4, false, false);
+      }
+    }
+
+    // 2. Dark Slot Inset Background (under the transparent cutout)
+    this.uBarGfx.fillStyle(0x030712, 0.95);
+    this.uBarGfx.fillRect(slotX, slotY, slotW, slotH);
+
+    // 3. Pixelated Shaded Blue Fill
+    const innerW = Math.round(slotW * frac);
+    if (innerW > 0) {
+      const fx = slotX;
+      const fy = slotY;
+      const fh = slotH;
+
+      if (isReady) {
+        // Celestial Incandescent Cyan/White Fill (Ready state)
+        this.uBarGfx.fillStyle(0xffffff, 0.98);
+        this.uBarGfx.fillRect(fx, fy, innerW, 2);
+        this.uBarGfx.fillStyle(0xa5f3fc, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 2, innerW, 4);
+        this.uBarGfx.fillStyle(0x22d3ee, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 6, innerW, 4);
+        this.uBarGfx.fillStyle(0x0ea5e9, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 10, innerW, 4);
+        this.uBarGfx.fillStyle(0x0284c7, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 14, innerW, Math.max(1, fh - 14));
+      } else {
+        // Charging / Cooldown: Rich Electric Blue Shading
+        this.uBarGfx.fillStyle(0xe0f2fe, 0.92);
+        this.uBarGfx.fillRect(fx, fy, innerW, 2);
+        this.uBarGfx.fillStyle(0x38bdf8, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 2, innerW, 4);
+        this.uBarGfx.fillStyle(0x0284c7, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 6, innerW, 4);
+        this.uBarGfx.fillStyle(0x0369a1, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 10, innerW, 4);
+        this.uBarGfx.fillStyle(0x075985, 1.0);
+        this.uBarGfx.fillRect(fx, fy + 14, innerW, Math.max(1, fh - 14));
+      }
+
+      // Vertical tick notches every 25px
+      this.uBarGfx.fillStyle(0x020d1c, 0.55);
+      for (let s = 25; s < innerW; s += 25) {
+        this.uBarGfx.fillRect(fx + s, fy, 1, fh);
+      }
+    }
+
+    // 4. Text Display
+    if (isReady) {
+      this.uText.setText('✦   NOVA READY — PRESS [U]   ✦');
+      this.uText.setColor('#ffffff');
+      this.uText.setFontSize('10.5px');
+      this.uText.setShadow(0, 0, '#38bdf8', 10, true, true);
+    } else if (isOnCooldown) {
+      this.uText.setText(`RECHARGING  ✦  ${this.cooldownU.toFixed(1)}s`);
+      this.uText.setColor('#93c5fd');
+      this.uText.setFontSize('10px');
+      this.uText.setShadow(0, 1, '#000000', 4, false, false);
+    } else {
+      this.uText.setText(`NOVA  ✦  ${Math.round(this.pointsTowardsU).toLocaleString()} / ${this.REQ_POINTS_U.toLocaleString()} PTS`);
+      this.uText.setColor('#94a3b8');
+      this.uText.setFontSize('10px');
+      this.uText.setShadow(0, 1, '#000000', 4, false, false);
+    }
+  }
+
+  // -----------------------------------------------------------------
+  // LEVEL 1 CONTROLS CODEX POPUP MODAL
+  // -----------------------------------------------------------------
+  private showControlsPopup() {
+    this.isControlsPopupOpen = true;
+
+    const { width, height } = this.scale;
+    const z = BALANCE.level1CameraZoom;
+    const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
+    const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
+
+    const popupContainer = this.add.container(toCamX(width / 2), toCamY(height / 2));
+    this.controlsPopupContainer = popupContainer;
+    popupContainer.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 100);
+
+    // 1. Semi-transparent backdrop overlay to dim the ruins
+    const backdrop = this.add.rectangle(0, 0, width * 3, height * 3, 0x000000, 0.78);
+    backdrop.setInteractive();
+
+    // 2. Main Parchment/Codex Tablet Dimensions
+    const panelW = 760;
+    const panelH = 510;
+
+    const panelGfx = this.add.graphics();
+    panelGfx.fillStyle(0x08060e, 0.96);
+    panelGfx.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 8);
+
+    panelGfx.fillStyle(0x130e1d, 0.65);
+    panelGfx.fillRoundedRect(-panelW / 2 + 6, -panelH / 2 + 6, panelW - 12, panelH - 12, 6);
+
+    panelGfx.lineStyle(2, 0xd4af37, 1.0);
+    panelGfx.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 8);
+    panelGfx.lineStyle(1, 0x5a482b, 0.75);
+    panelGfx.strokeRoundedRect(-panelW / 2 + 4, -panelH / 2 + 4, panelW - 8, panelH - 8, 6);
+
+    // Corner rivets
+    const corners = [
+      [-panelW / 2 + 10, -panelH / 2 + 10],
+      [panelW / 2 - 10, -panelH / 2 + 10],
+      [-panelW / 2 + 10, panelH / 2 - 10],
+      [panelW / 2 - 10, panelH / 2 - 10],
+    ];
+    panelGfx.fillStyle(0xffe484, 1.0);
+    for (const [cx, cy] of corners) {
+      panelGfx.fillCircle(cx, cy, 2.5);
+    }
+
+    // Vertical divider line
+    panelGfx.lineStyle(1, 0x3d3047, 0.8);
+    panelGfx.lineBetween(0, -panelH / 2 + 80, 0, panelH / 2 - 68);
+
+    // Top Header
+    const titleText = this.add.text(0, -panelH / 2 + 32, '❖   WARRIOR\'S CODEX   ❖', {
+      fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
+      fontSize: '25px',
+      fontStyle: 'bold',
+      color: '#f6ebd2',
+      letterSpacing: 4,
+    }).setOrigin(0.5, 0.5);
+    titleText.setShadow(0, 2, '#ca8328', 10, true, true);
+
+    const subText = this.add.text(0, -panelH / 2 + 62, 'ANCIENT COMBAT ARTS & SACRED COMMANDS', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '11px',
+      color: '#a39886',
+      letterSpacing: 3,
+    }).setOrigin(0.5, 0.5);
+
+    // Columns Content
+    const colLeftX = -panelW / 2 + 32;
+    const colRightX = 28;
+    const startY = -panelH / 2 + 96;
+
+    // --- LEFT COLUMN ---
+    const leftHeader1 = this.add.text(colLeftX, startY, '◆   MOVEMENT & EVASION   ◆', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#ffd700',
+      letterSpacing: 1,
+    });
+
+    const leftItems = [
+      { key: 'W, A, S, D', title: 'Locomotion', desc: 'Move in 8 directions through the ruins.' },
+      { key: 'SHIFT', title: 'Sprint', desc: 'Hold while running to surge into full sprint.' },
+      { key: 'SPACE', title: 'Evasive Dash', desc: 'Quick roll with invulnerability (i-frames).' },
+      { key: 'C', title: 'Shield Guard', desc: 'Absorb and deflect incoming frontal attacks.' },
+    ];
+
+    let curY = startY + 24;
+    const leftTextObjs: Phaser.GameObjects.Text[] = [leftHeader1];
+
+    leftItems.forEach(item => {
+      const t = this.add.text(colLeftX, curY, `[ ${item.key} ]  ${item.title}\n   ↳ ${item.desc}`, {
+        fontFamily: '"Cinzel", "Georgia", serif',
+        fontSize: '11px',
+        color: '#e2d9c8',
+        lineSpacing: 3,
+      });
+      leftTextObjs.push(t);
+      curY += 34;
+    });
+
+    curY += 8;
+    const leftHeader2 = this.add.text(colLeftX, curY, '◆   RADIANT POWERS   ◆', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#67e8f9',
+      letterSpacing: 1,
+    });
+    leftTextObjs.push(leftHeader2);
+    curY += 24;
+
+    const powerItems = [
+      { key: 'X', title: 'Light Orb', desc: 'Piercing radiant sphere. Unlocks at 1,500 pts.' },
+      { key: 'U', title: 'Celestial Nova', desc: 'Arena-wide shockwaves. Unlocks at 7,500 pts.' },
+    ];
+
+    powerItems.forEach(item => {
+      const t = this.add.text(colLeftX, curY, `[ ${item.key} ]  ${item.title}\n   ↳ ${item.desc}`, {
+        fontFamily: '"Cinzel", "Georgia", serif',
+        fontSize: '11px',
+        color: '#bae6fd',
+        lineSpacing: 3,
+      });
+      leftTextObjs.push(t);
+      curY += 34;
+    });
+
+    // --- RIGHT COLUMN ---
+    const rightHeader1 = this.add.text(colRightX, startY, '◆   BLADE & MARTIAL ARTS   ◆', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#ffd700',
+      letterSpacing: 1,
+    });
+
+    const martialItems = [
+      { key: 'LMB', title: 'Sword Strikes', desc: 'Fluid combination chain slashing foes in front.' },
+      { key: 'Q', title: 'Thrusting Kick', desc: 'Fast kick delivering heavy knockback recoil.' },
+      { key: 'E', title: 'Whirlwind Flurry', desc: '360° spin hitting all foes and stunning them.' },
+      { key: 'V', title: 'Pummel', desc: 'Heavy blunt strike that staggers and stuns.' },
+      { key: 'R', title: 'Overhead Cleave', desc: 'Crushing executioner downward slam.' },
+    ];
+
+    let curRightY = startY + 24;
+    const rightTextObjs: Phaser.GameObjects.Text[] = [rightHeader1];
+
+    martialItems.forEach(item => {
+      const t = this.add.text(colRightX, curRightY, `[ ${item.key} ]  ${item.title}\n   ↳ ${item.desc}`, {
+        fontFamily: '"Cinzel", "Georgia", serif',
+        fontSize: '11px',
+        color: '#e2d9c8',
+        lineSpacing: 3,
+      });
+      rightTextObjs.push(t);
+      curRightY += 34;
+    });
+
+    curRightY += 6;
+    const rightHeader2 = this.add.text(colRightX, curRightY, '◆   LIGHT & DARKNESS   ◆', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#f87171',
+      letterSpacing: 1,
+    });
+    rightTextObjs.push(rightHeader2);
+    curRightY += 22;
+
+    const veilText = this.add.text(colRightX, curRightY, '✦ Slaying shadow monsters restores radiance (+%).\n✦ Shadows roaming the field deepen the darkness.\n   Purge the darkness before the ruins fall!', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '10.5px',
+      color: '#d4cebe',
+      lineSpacing: 3,
+    });
+    rightTextObjs.push(veilText);
+
+    // --- UNDERSTOOD BUTTON ---
+    const btnY = panelH / 2 - 36;
+    const btnW = 260;
+    const btnH = 42;
+
+    const btnContainer = this.add.container(0, btnY);
+    const btnGfx = this.add.graphics();
+    btnGfx.fillStyle(0x0e111d, 1.0);
+    btnGfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+    btnGfx.lineStyle(1.5, 0xd4af37, 1.0);
+    btnGfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+
+    const btnText = this.add.text(0, 0, '✦   UNDERSTOOD   ✦', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '16px',
+      fontStyle: 'bold',
+      color: '#ffd700',
+      letterSpacing: 3,
+    }).setOrigin(0.5, 0.5);
+
+    const hitZone = this.add.zone(0, 0, btnW, btnH).setOrigin(0.5, 0.5).setInteractive({ cursor: 'pointer' });
+    btnContainer.add([btnGfx, btnText, hitZone]);
+
+    const onUnderstood = () => {
+      if (!this.isControlsPopupOpen) return;
+      this.isControlsPopupOpen = false;
+
+      this.tweens.add({
+        targets: popupContainer,
+        alpha: 0,
+        duration: 300,
+        ease: 'Power2',
+        onComplete: () => {
+          popupContainer.destroy();
+          this.controlsPopupContainer = undefined;
+          this.showTitleCard();
+          this.startWave(1);
+        },
+      });
+    };
+
+    hitZone.on('pointerover', () => {
+      btnGfx.clear();
+      btnGfx.fillStyle(0x1a2138, 1.0);
+      btnGfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+      btnGfx.lineStyle(2, 0xffe484, 1.0);
+      btnGfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+      btnText.setColor('#ffffff');
+      btnText.setShadow(0, 0, '#ffd700', 8, true, true);
+    });
+
+    hitZone.on('pointerout', () => {
+      btnGfx.clear();
+      btnGfx.fillStyle(0x0e111d, 1.0);
+      btnGfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+      btnGfx.lineStyle(1.5, 0xd4af37, 1.0);
+      btnGfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
+      btnText.setColor('#ffd700');
+      btnText.setShadow(0, 0, '#000000', 0, false, false);
+    });
+
+    hitZone.on('pointerdown', onUnderstood);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Enter' || e.code === 'Space') {
+        window.removeEventListener('keydown', onKeyDown);
+        onUnderstood();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, { once: true });
+
+    popupContainer.add([
+      backdrop,
+      panelGfx,
+      titleText,
+      subText,
+      ...leftTextObjs,
+      ...rightTextObjs,
+      btnContainer,
+    ]);
   }
 
   public damagePlayer(amount: number) {
@@ -456,22 +1095,24 @@ export class GameScene extends Phaser.Scene {
 
     const title = this.add
       .text(width / 2, toCamY(height * 0.42), this.level.title, {
-        fontFamily: 'Georgia, serif',
-        fontSize: '72px',
-        color: '#ece8f4',
+        fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
+        fontSize: '68px',
+        fontStyle: 'bold',
+        color: '#f5ebd0',
       })
       .setOrigin(0.5)
       .setScale(1 / z)
-      .setLetterSpacing(14)
+      .setLetterSpacing(12)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 1)
       .setAlpha(0);
+    title.setShadow(0, 4, '#ca8328', 14, true, true);
 
     const sub = this.add
       .text(width / 2, toCamY(height * 0.42 + 56), this.level.subtitle, {
-        fontFamily: 'Georgia, serif',
-        fontSize: '22px',
-        color: '#9a96b0',
+        fontFamily: '"Cinzel", "Georgia", serif',
+        fontSize: '20px',
+        color: '#c2b395',
       })
       .setOrigin(0.5)
       .setScale(1 / z)
@@ -499,53 +1140,107 @@ export class GameScene extends Phaser.Scene {
     const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
     const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
 
-    // Corner wave indicator (top-left) - wide cinematic typography matching The Veil
+    // Corner wave indicator (top-left) - medieval fantasy gothic banner
     this.cornerWaveText = this.add
-      .text(toCamX(32), toCamY(28), 'WAVE I', {
-        fontFamily: 'Georgia, serif',
-        fontSize: '18px',
-        color: '#ece8f4',
+      .text(toCamX(36), toCamY(24), '❖   W A V E   I   ❖', {
+        fontFamily: '"Cinzel", "Georgia", serif',
+        fontSize: '17px',
+        fontStyle: 'bold',
+        color: '#f5ebd0',
+        letterSpacing: 4,
       })
       .setOrigin(0, 0)
       .setScale(1 / z)
-      .setLetterSpacing(6)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 10)
-      .setAlpha(0.85);
+      .setAlpha(0.92);
+    this.cornerWaveText.setShadow(0, 2, '#382a1a', 8, true, true);
 
-    // Small light level indicator (bottom-right)
+    // --- MEDIEVAL FANTASY POINTS & CURRENCY BAR (Top-Right, inspired by references.png) ---
+    const bannerW = 320;
+    const bannerH = 46;
+    this.scoreContainer = this.add.container(toCamX(width - bannerW - 28), toCamY(20));
+    this.scoreContainer.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
+
+    this.scoreBannerGfx = this.add.graphics();
+
+    // Main Points Value Text
+    this.scoreText = this.add.text(50, 6, `POINTS 0`, {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '16px',
+      fontStyle: 'bold',
+      color: '#ffd700',
+      letterSpacing: 2,
+    }).setOrigin(0, 0);
+    this.scoreText.setShadow(0, 1, '#7a5a10', 4, true, true);
+
+    // Secondary status line (Light level multiplier and ability readiness)
     const pct = Math.round(this.blackPoint * 100);
     const sign = pct > 0 ? '+' : '';
-    this.lightLevelText = this.add
-      .text(toCamX(width - 32), toCamY(height - 28), `LIGHT ${sign}${pct}%`, {
-        fontFamily: 'Georgia, serif',
-        fontSize: '16px',
-        color: '#ece8f4',
-      })
-      .setOrigin(1, 1)
-      .setScale(1 / z)
-      .setLetterSpacing(4)
-      .setScrollFactor(0)
-      .setDepth(DEPTH.screen + 10)
-      .setAlpha(0.85);
+    this.scoreDetailsText = this.add.text(50, 26, `LIGHT ${sign}${pct}%  ✦  X: 0/1.5k  ❖  U: 0/7.5k`, {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '10px',
+      color: '#c2bcd0',
+      letterSpacing: 1,
+    }).setOrigin(0, 0);
 
-    // Total points indicator (above light level at bottom-right)
-    this.scoreText = this.add
-      .text(toCamX(width - 32), toCamY(height - 52), `POINTS ${this.score}`, {
-        fontFamily: 'Georgia, serif',
-        fontSize: '16px',
-        color: '#ece8f4',
-      })
-      .setOrigin(1, 1)
-      .setScale(1 / z)
-      .setLetterSpacing(4)
-      .setScrollFactor(0)
-      .setDepth(DEPTH.screen + 10)
-      .setAlpha(0.95);
+    // Keep lightLevelText reference for compatibility
+    this.lightLevelText = this.add.text(0, 0, '', { fontSize: '1px' }).setVisible(false);
+
+    this.scoreContainer.add([this.scoreBannerGfx, this.scoreText, this.scoreDetailsText]);
+    this.drawScoreBanner(bannerW, bannerH);
+  }
+
+  private drawScoreBanner(w: number, h: number) {
+    this.scoreBannerGfx.clear();
+
+    // Dark iron gothic banner plate with pointed diamond end caps
+    this.scoreBannerGfx.fillStyle(0x0a0812, 0.88);
+    this.scoreBannerGfx.beginPath();
+    this.scoreBannerGfx.moveTo(0, h / 2);
+    this.scoreBannerGfx.lineTo(12, 0);
+    this.scoreBannerGfx.lineTo(w - 12, 0);
+    this.scoreBannerGfx.lineTo(w, h / 2);
+    this.scoreBannerGfx.lineTo(w - 12, h);
+    this.scoreBannerGfx.lineTo(12, h);
+    this.scoreBannerGfx.closePath();
+    this.scoreBannerGfx.fillPath();
+
+    // Outer dark iron & gold rim
+    this.scoreBannerGfx.lineStyle(1.5, 0x322842, 1.0);
+    this.scoreBannerGfx.strokePath();
+    this.scoreBannerGfx.lineStyle(1, 0x8a7042, 0.85);
+    this.scoreBannerGfx.strokePath();
+
+    // Golden Coin Medallion on the left
+    const coinCX = 26;
+    const coinCY = h / 2;
+    const coinR = 14;
+
+    this.scoreBannerGfx.fillStyle(0x855816, 1.0);
+    this.scoreBannerGfx.fillCircle(coinCX, coinCY, coinR + 1);
+    this.scoreBannerGfx.fillStyle(0xd4af37, 1.0);
+    this.scoreBannerGfx.fillCircle(coinCX, coinCY, coinR);
+    this.scoreBannerGfx.lineStyle(1, 0xffe484, 0.9);
+    this.scoreBannerGfx.strokeCircle(coinCX, coinCY, coinR - 2);
+
+    // Embossed star diamond inside coin
+    this.scoreBannerGfx.fillStyle(0x613f0c, 1.0);
+    this.scoreBannerGfx.beginPath();
+    this.scoreBannerGfx.moveTo(coinCX, coinCY - 6);
+    this.scoreBannerGfx.lineTo(coinCX + 5, coinCY);
+    this.scoreBannerGfx.lineTo(coinCX, coinCY + 6);
+    this.scoreBannerGfx.lineTo(coinCX - 5, coinCY);
+    this.scoreBannerGfx.closePath();
+    this.scoreBannerGfx.fillPath();
+
+    // Specular highlight dot on coin
+    this.scoreBannerGfx.fillStyle(0xffffff, 0.8);
+    this.scoreBannerGfx.fillCircle(coinCX - 4, coinCY - 4, 1.5);
   }
 
   // -----------------------------------------------------------------
-  // COOLDOWN HUD (TOP-RIGHT)
+  // MEDIEVAL FANTASY ABILITY COOLDOWN DOCK (BOTTOM-RIGHT)
   // -----------------------------------------------------------------
   private setupCooldownHUD() {
     const { width, height } = this.scale;
@@ -553,120 +1248,249 @@ export class GameScene extends Phaser.Scene {
     const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
     const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
 
-    // Anchor at top-right
-    const panelW = 216;
-    const panelH = 204;
-    this.cooldownContainer = this.add.container(toCamX(width - panelW - 20), toCamY(20));
-    this.cooldownContainer.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
+    // 6 ability rows: LMB, Q, E, V, R, X
+    const rowH = 22;
+    const rowGap = 4;
+    const rowsCount = 6;
+    const totalW = 214;
+    const totalH = rowsCount * rowH + (rowsCount - 1) * rowGap; // 152px
 
-    // Subtle dark translucent background panel with rounded border
+    const container = this.add.container(toCamX(width - totalW - 24), toCamY(height - totalH - 24));
+    this.cooldownContainer = container;
+    container.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
+
+    // Subtle dark gothic backing plate
     const bgGfx = this.add.graphics();
-    bgGfx.fillStyle(0x06050b, 0.72);
-    bgGfx.fillRoundedRect(0, 0, panelW, panelH, 4);
-    bgGfx.lineStyle(1, 0x2e293f, 0.85);
-    bgGfx.strokeRoundedRect(0, 0, panelW, panelH, 4);
+    bgGfx.fillStyle(0x06040a, 0.82);
+    bgGfx.fillRoundedRect(-8, -6, totalW + 16, totalH + 12, 6);
+    bgGfx.lineStyle(1.5, 0x221a2c, 0.9);
+    bgGfx.strokeRoundedRect(-8, -6, totalW + 16, totalH + 12, 6);
+    bgGfx.lineStyle(1, 0x483a22, 0.5);
+    bgGfx.strokeRoundedRect(-9, -7, totalW + 18, totalH + 14, 7);
 
-    // Graphics for the 8 cooldown bars
-    this.cooldownBarsGfx = this.add.graphics();
+    const barsGfx = this.add.graphics();
+    this.cooldownBarsGfx = barsGfx;
+    container.add([bgGfx, barsGfx]);
 
-    this.cooldownContainer.add([bgGfx, this.cooldownBarsGfx]);
+    this.cooldownRows = [];
 
-    const skills = [
-      { key: '[LMB]', name: 'Strike' },
-      { key: '[SHIFT+LMB]', name: 'Sprint' },
-      { key: '[Q]', name: 'Kick' },
-      { key: '[E]', name: 'Whirlwind' },
-      { key: '[V]', name: 'Pummel' },
-      { key: '[R]', name: 'Overhead' },
-      { key: '[X]', name: 'Light Orb' },
-      { key: '[U]', name: 'Shockwave' },
+    const abilityDefs = [
+      { key: 'SPACE', name: 'Dash', maxCd: this.maxCooldownDash, iconType: 'image' as const, texture: 'icon_dash' },
+      { key: 'Q', name: 'Kick', maxCd: this.maxCooldownQ, iconType: 'image' as const, texture: 'icon_kick' },
+      { key: 'E', name: 'Whirl', maxCd: this.maxCooldownE, iconType: 'sprite' as const, texture: 'icon_whirlwind', anim: 'anim_icon_whirlwind' },
+      { key: 'V', name: 'Pummel', maxCd: this.maxCooldownV, iconType: 'image' as const, texture: 'icon_pummel' },
+      { key: 'R', name: 'Overhead', maxCd: this.maxCooldownR, iconType: 'image' as const, texture: 'icon_overhead' },
+      { key: 'X', name: 'Orb', maxCd: this.maxCooldownX, iconType: 'sprite' as const, texture: 'orb', anim: 'orb_fly_0' },
     ];
 
-    this.cooldownKeyTexts = [];
-    this.cooldownNameTexts = [];
+    abilityDefs.forEach((def, i) => {
+      const y = i * (rowH + rowGap);
+      const iconCX = 10;
+      const iconCY = y + rowH / 2;
 
-    skills.forEach((skill, i) => {
-      const rowY = 11 + i * 23;
+      let iconObj: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
+      if (def.iconType === 'sprite') {
+        const sprite = this.add.sprite(iconCX, iconCY, def.texture);
+        if (def.key === 'E') {
+          sprite.setScale(16 / 16, 18 / 19);
+        } else if (def.key === 'X') {
+          sprite.setScale(18 / 167, 18 / 159);
+        }
+        if (def.anim && this.anims.exists(def.anim)) {
+          sprite.play(def.anim);
+        }
+        iconObj = sprite;
+      } else {
+        const img = this.add.image(iconCX, iconCY, def.texture);
+        img.setDisplaySize(18, 18);
+        iconObj = img;
+      }
 
-      const keyTxt = this.add
-        .text(10, rowY, skill.key, {
-          fontFamily: 'Georgia, serif',
-          fontSize: '11px',
-          fontStyle: 'bold',
-          color: '#ffffff',
-        })
-        .setOrigin(0, 0);
+      // Keybind badge text
+      const keyTxt = this.add.text(36, iconCY, def.key, {
+        fontFamily: '"Cinzel", "Georgia", serif',
+        fontSize: def.key === 'SPACE' ? '8.5px' : '11px',
+        fontStyle: 'bold',
+        color: '#d4cebe',
+      }).setOrigin(0.5, 0.5);
 
-      const nameTxt = this.add
-        .text(86, rowY, skill.name, {
-          fontFamily: 'Georgia, serif',
-          fontSize: '11px',
-          color: '#ece8f4',
-        })
-        .setOrigin(0, 0);
+      // Countdown / status text
+      const statusTxt = this.add.text(182, iconCY, 'RDY', {
+        fontFamily: '"Cinzel", "Georgia", serif',
+        fontSize: '10px',
+        fontStyle: 'bold',
+        color: '#ffd700',
+      }).setOrigin(0.5, 0.5);
 
-      this.cooldownKeyTexts.push(keyTxt);
-      this.cooldownNameTexts.push(nameTxt);
-      this.cooldownContainer.add([keyTxt, nameTxt]);
+      container.add([iconObj, keyTxt, statusTxt]);
+
+      this.cooldownRows.push({
+        key: def.key,
+        name: def.name,
+        maxCd: def.maxCd,
+        icon: iconObj,
+        keyText: keyTxt,
+        statusText: statusTxt,
+      });
     });
 
     this.updateCooldownHUD();
   }
 
   private updateCooldownHUD() {
-    if (!this.cooldownBarsGfx) return;
+    const gfx = this.cooldownBarsGfx;
+    if (!gfx) return;
 
-    this.cooldownBarsGfx.clear();
+    gfx.clear();
 
-    // 8 Skills: LMB, SHIFT+LMB, Q, E, V, R, X, U
-    const fracLMB = 1.0;
-    const fracSprint = Phaser.Math.Clamp(this.sprintTimer / this.SPRINT_REQ, 0, 1);
-    const fracQ = Phaser.Math.Clamp(1 - this.cooldownQ / this.maxCooldownQ, 0, 1);
-    const fracE = Phaser.Math.Clamp(1 - this.cooldownE / this.maxCooldownE, 0, 1);
-    const fracV = Phaser.Math.Clamp(1 - this.cooldownV / this.maxCooldownV, 0, 1);
-    const fracR = Phaser.Math.Clamp(1 - this.cooldownR / this.maxCooldownR, 0, 1);
-    const fracX = Math.min(
-      Phaser.Math.Clamp(this.pointsTowardsX / this.REQ_POINTS_X, 0, 1),
-      Phaser.Math.Clamp(1 - this.cooldownX / this.maxCooldownX, 0, 1),
-    );
-    const fracU = Math.min(
-      Phaser.Math.Clamp(this.pointsTowardsU / this.REQ_POINTS_U, 0, 1),
-      Phaser.Math.Clamp(1 - this.cooldownU / this.maxCooldownU, 0, 1),
-    );
+    const rowH = 22;
+    const rowGap = 4;
+    const barX = 54;
+    const barW = 98;
+    const barH = 10;
 
-    const fractions = [fracLMB, fracSprint, fracQ, fracE, fracV, fracR, fracX, fracU];
+    this.cooldownRows.forEach((row, i) => {
+      const y = i * (rowH + rowGap);
+      const barY = y + 6;
 
-    const barX = 144;
-    const barW = 62;
-    const barH = 7;
+      let frac = 1.0;
+      let isReady = true;
+      let isLocked = false;
+      let statusStr = 'RDY';
 
-    fractions.forEach((frac, i) => {
-      const rowY = 11 + i * 23;
-      const barY = rowY + 3;
-
-      // Outer bar frame
-      this.cooldownBarsGfx.fillStyle(0x0c0b12, 1.0);
-      this.cooldownBarsGfx.fillRect(barX, barY, barW, barH);
-      this.cooldownBarsGfx.lineStyle(1, 0x2a2638, 1.0);
-      this.cooldownBarsGfx.strokeRect(barX, barY, barW, barH);
-
-      // Inner fill based on progress
-      const maxInnerW = barW - 2;
-      const fillW = Math.round(maxInnerW * frac);
-
-      const isReady = frac >= 0.999;
-      if (fillW > 0) {
-        // Silver-white when ready, warm amber when recharging
-        this.cooldownBarsGfx.fillStyle(isReady ? 0xece8f4 : 0xca8228, 1.0);
-        this.cooldownBarsGfx.fillRect(barX + 1, barY + 1, fillW, barH - 2);
+      switch (row.key) {
+        case 'SPACE':
+          frac = Phaser.Math.Clamp(1 - this.cooldownDash / this.maxCooldownDash, 0, 1);
+          isReady = this.cooldownDash <= 0;
+          statusStr = isReady ? 'RDY' : `${this.cooldownDash.toFixed(1)}s`;
+          break;
+        case 'Q':
+          frac = Phaser.Math.Clamp(1 - this.cooldownQ / this.maxCooldownQ, 0, 1);
+          isReady = this.cooldownQ <= 0;
+          statusStr = isReady ? 'RDY' : `${this.cooldownQ.toFixed(1)}s`;
+          break;
+        case 'E':
+          frac = Phaser.Math.Clamp(1 - this.cooldownE / this.maxCooldownE, 0, 1);
+          isReady = this.cooldownE <= 0;
+          statusStr = isReady ? 'RDY' : `${this.cooldownE.toFixed(1)}s`;
+          break;
+        case 'V':
+          frac = Phaser.Math.Clamp(1 - this.cooldownV / this.maxCooldownV, 0, 1);
+          isReady = this.cooldownV <= 0;
+          statusStr = isReady ? 'RDY' : `${this.cooldownV.toFixed(1)}s`;
+          break;
+        case 'R':
+          frac = Phaser.Math.Clamp(1 - this.cooldownR / this.maxCooldownR, 0, 1);
+          isReady = this.cooldownR <= 0;
+          statusStr = isReady ? 'RDY' : `${this.cooldownR.toFixed(1)}s`;
+          break;
+        case 'X':
+          isLocked = this.pointsTowardsX < this.REQ_POINTS_X;
+          if (isLocked) {
+            frac = Phaser.Math.Clamp(this.pointsTowardsX / this.REQ_POINTS_X, 0, 1);
+            isReady = false;
+            statusStr = `${(this.pointsTowardsX / 1000).toFixed(1)}k`;
+          } else if (this.cooldownX > 0) {
+            frac = Phaser.Math.Clamp(1 - this.cooldownX / this.maxCooldownX, 0, 1);
+            isReady = false;
+            statusStr = `${this.cooldownX.toFixed(1)}s`;
+          } else {
+            frac = 1.0;
+            isReady = true;
+            statusStr = 'RDY';
+          }
+          break;
       }
 
-      // Visual feedback: dim text while recharging, bright while ready
-      if (this.cooldownKeyTexts[i] && this.cooldownNameTexts[i]) {
-        this.cooldownKeyTexts[i].setAlpha(isReady ? 1.0 : 0.45);
-        this.cooldownNameTexts[i].setAlpha(isReady ? 0.9 : 0.45);
+      // 1. Icon frame backing & border
+      gfx.fillStyle(0x06050b, 1.0);
+      gfx.fillRect(0, y + 1, 20, 20);
+      gfx.lineStyle(1, isReady ? 0xd4af37 : 0x2a2336, 1.0);
+      gfx.strokeRect(0, y + 1, 20, 20);
+
+      // Icon tint / alpha when on cooldown
+      if (row.icon) {
+        if (isReady) {
+          row.icon.setAlpha(1.0);
+          if ('clearTint' in row.icon) (row.icon as Phaser.GameObjects.Image).clearTint();
+        } else {
+          row.icon.setAlpha(0.65);
+          if ('setTint' in row.icon) (row.icon as Phaser.GameObjects.Image).setTint(0x7a7485);
+        }
+      }
+
+      // 2. Bar slot frame
+      gfx.fillStyle(0x07060f, 1.0);
+      gfx.fillRect(barX, barY, barW, barH);
+      gfx.lineStyle(1, isReady ? 0x8a7032 : 0x221c2e, 1.0);
+      gfx.strokeRect(barX, barY, barW, barH);
+
+      // Inner shadow
+      gfx.fillStyle(0x030206, 0.7);
+      gfx.fillRect(barX + 1, barY + 1, barW - 2, 1);
+
+      // 3. Pixelated shaded fill
+      const maxInnerW = barW - 2;
+      const innerW = Math.round(maxInnerW * frac);
+      if (innerW > 0) {
+        const fx = barX + 1;
+        const fy = barY + 1;
+        const fh = barH - 2; // 8px
+
+        if (isReady) {
+          // Brilliant golden fill
+          gfx.fillStyle(0xfff3a8, 0.95);
+          gfx.fillRect(fx, fy, innerW, 2);
+          gfx.fillStyle(0xf59e0b, 1.0);
+          gfx.fillRect(fx, fy + 2, innerW, 3);
+          gfx.fillStyle(0xd97706, 1.0);
+          gfx.fillRect(fx, fy + 5, innerW, 2);
+          gfx.fillStyle(0x78350f, 1.0);
+          gfx.fillRect(fx, fy + 7, innerW, 1);
+        } else if (isLocked) {
+          // Points charging towards X (Amethyst / Violet)
+          gfx.fillStyle(0xf3e8ff, 0.90);
+          gfx.fillRect(fx, fy, innerW, 2);
+          gfx.fillStyle(0xa855f7, 1.0);
+          gfx.fillRect(fx, fy + 2, innerW, 3);
+          gfx.fillStyle(0x7e22ce, 1.0);
+          gfx.fillRect(fx, fy + 5, innerW, 2);
+          gfx.fillStyle(0x3b0764, 1.0);
+          gfx.fillRect(fx, fy + 7, innerW, 1);
+        } else {
+          // Ability recharging on cooldown (Electric cyan/blue)
+          gfx.fillStyle(0xbae6fd, 0.90);
+          gfx.fillRect(fx, fy, innerW, 2);
+          gfx.fillStyle(0x0284c7, 1.0);
+          gfx.fillRect(fx, fy + 2, innerW, 3);
+          gfx.fillStyle(0x0369a1, 1.0);
+          gfx.fillRect(fx, fy + 5, innerW, 2);
+          gfx.fillStyle(0x0c4a6e, 1.0);
+          gfx.fillRect(fx, fy + 7, innerW, 1);
+        }
+
+        // Notch lines every 20px
+        gfx.fillStyle(0x000000, 0.45);
+        for (let s = 20; s < innerW; s += 20) {
+          gfx.fillRect(fx + s, fy, 1, fh);
+        }
+      }
+
+      // 4. Update texts
+      row.statusText.setText(statusStr);
+      if (isReady) {
+        row.keyText.setColor('#ffd700');
+        row.statusText.setColor('#ffd700');
+      } else if (isLocked) {
+        row.keyText.setColor('#6b6475');
+        row.statusText.setColor('#ca8228');
+      } else {
+        row.keyText.setColor('#94a3b8');
+        row.statusText.setColor('#74b9ff');
       }
     });
+
+    this.updateUBar();
   }
 
   private announceWave(titleText: string, subText: string = '', permanent = false) {
@@ -685,25 +1509,27 @@ export class GameScene extends Phaser.Scene {
 
     this.waveAnnounceTitle = this.add
       .text(width / 2, toCamY(height * 0.42), titleText, {
-        fontFamily: 'Georgia, serif',
-        fontSize: '72px',
-        color: '#ece8f4',
+        fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
+        fontSize: '68px',
+        fontStyle: 'bold',
+        color: '#f5ebd0',
       })
       .setOrigin(0.5)
       .setScale(1 / z)
-      .setLetterSpacing(14)
+      .setLetterSpacing(12)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 2)
       .setAlpha(0);
+    this.waveAnnounceTitle.setShadow(0, 4, '#ca8328', 14, true, true);
 
     const targets: Phaser.GameObjects.Text[] = [this.waveAnnounceTitle];
 
     if (subText) {
       this.waveAnnounceSub = this.add
         .text(width / 2, toCamY(height * 0.42 + 56), subText, {
-          fontFamily: 'Georgia, serif',
-          fontSize: '22px',
-          color: '#9a96b0',
+          fontFamily: '"Cinzel", "Georgia", serif',
+          fontSize: '20px',
+          color: '#c2b395',
         })
         .setOrigin(0.5)
         .setScale(1 / z)
@@ -939,9 +1765,9 @@ export class GameScene extends Phaser.Scene {
     // Spawn kill effect: motes for Yi, spirits for Zed, purple spirit for Enemy3
     this.spawnEnemyDefeatEffect(enemy);
 
-    // Brighten the background and level props: increase black point by 5% (0.05) per enemy defeated, capped at 35% (0.35)
-    this.blackPoint = Math.min(0.35, this.blackPoint + 0.05);
-    this.applyBlackPoint();
+    // Brighten the background and level props: increase target light level by 5% (0.05) per enemy defeated, capped at 35% (0.35).
+    // The smooth, continuous transition is processed frame-by-frame in updateBlackPoint().
+    this.targetBlackPoint = Math.min(0.35, this.targetBlackPoint + 0.05);
 
     this.checkWaveProgress();
   }
@@ -1093,8 +1919,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateScoreUI() {
-    if (this.scoreText) {
-      this.scoreText.setText(`POINTS ${this.score}`);
+    if (this.scoreText && this.scoreText.scene && this.scoreText.active) {
+      this.scoreText.setText(`POINTS ${this.score.toLocaleString()}`);
+    }
+    if (this.scoreDetailsText && this.scoreDetailsText.scene && this.scoreDetailsText.active) {
+      const pct = Math.round(this.blackPoint * 100);
+      const sign = pct > 0 ? '+' : '';
+      const xReady = this.pointsTowardsX >= this.REQ_POINTS_X;
+      const xStr = xReady ? 'READY' : `${Math.round(this.pointsTowardsX).toLocaleString()}/${this.REQ_POINTS_X.toLocaleString()}`;
+      const uReady = this.pointsTowardsU >= this.REQ_POINTS_U;
+      const uStr = uReady ? 'READY' : `${(this.pointsTowardsU / 1000).toFixed(1)}k/${(this.REQ_POINTS_U / 1000).toFixed(1)}k`;
+      this.scoreDetailsText.setText(`LIGHT ${sign}${pct}%  ✦  X: ${xStr}  ❖  U: ${uStr}`);
     }
   }
 
@@ -1104,23 +1939,24 @@ export class GameScene extends Phaser.Scene {
     const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
     const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
 
-    // Slot 0 is base Y above POINTS text (height - 76); higher slots stack upward
+    // Slot 0 is base Y below points banner (y = 74); higher slots stack downward
     const slotIndex = this.killPopups.length;
-    const screenY = (height - 76) - slotIndex * 22;
+    const screenY = 74 + slotIndex * 22;
 
     const popupText = this.add
-      .text(toCamX(width - 32), toCamY(screenY), `+${points}`, {
-        fontFamily: 'Georgia, serif',
+      .text(toCamX(width - 36), toCamY(screenY), `+${points.toLocaleString()}`, {
+        fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '15px',
         fontStyle: 'bold',
         color: '#ffd700',
       })
-      .setOrigin(1, 1)
+      .setOrigin(1, 0)
       .setScale(1 / z)
       .setLetterSpacing(3)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 10)
       .setAlpha(0);
+    popupText.setShadow(0, 0, '#ca8328', 8, true, true);
 
     // Quick smooth fade in
     this.tweens.add({
@@ -1444,6 +2280,10 @@ export class GameScene extends Phaser.Scene {
   // UPDATE LOOP
   // -----------------------------------------------------------------
   update(_time: number, deltaMs: number) {
+    if (this.isControlsPopupOpen) {
+      return;
+    }
+
     const dt = Math.min(deltaMs / 1000, 0.05);
 
     if (Phaser.Input.Keyboard.JustDown(this.keyG)) {
@@ -1479,6 +2319,7 @@ export class GameScene extends Phaser.Scene {
     this.handleLocomotion(dt);
 
     // Decrement ability cooldowns
+    if (this.cooldownDash > 0) this.cooldownDash = Math.max(0, this.cooldownDash - dt);
     if (this.cooldownQ > 0) this.cooldownQ = Math.max(0, this.cooldownQ - dt);
     if (this.cooldownE > 0) this.cooldownE = Math.max(0, this.cooldownE - dt);
     if (this.cooldownV > 0) this.cooldownV = Math.max(0, this.cooldownV - dt);
@@ -1558,7 +2399,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.keySpace)) {
-      this.triggerRoll();
+      if (this.cooldownDash <= 0) {
+        this.triggerRoll();
+      }
       return;
     }
 
@@ -1759,7 +2602,7 @@ export class GameScene extends Phaser.Scene {
         if (enemy.isDead) continue;
         const dx = enemy.x - orb.sprite.x;
         const dy = (enemy.y - orbGroundY) / 0.85;
-        const enemyHitbox = enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
+        const enemyHitbox = enemy.championType === 'Boss' ? 17 : enemy.championType === 'Zed' ? 20 : enemy.championType === 'Enemy3' ? 8 : 12;
         if (Math.hypot(dx, dy) <= orbRadius + enemyHitbox) {
           hitEnemies.push(enemy);
         }
@@ -1773,7 +2616,7 @@ export class GameScene extends Phaser.Scene {
           if (enemy.isDead || damageTargets.has(enemy)) continue;
           const dx = enemy.x - orb.sprite.x;
           const dy = (enemy.y - orbGroundY) / 0.85;
-          const enemyHitbox = enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
+          const enemyHitbox = enemy.championType === 'Boss' ? 17 : enemy.championType === 'Zed' ? 20 : enemy.championType === 'Enemy3' ? 8 : 12;
           if (Math.hypot(dx, dy) <= splashRadius + enemyHitbox) {
             damageTargets.add(enemy);
           }
@@ -2111,13 +2954,14 @@ export class GameScene extends Phaser.Scene {
         const dist = Math.hypot(dx, dy);
 
         // Enemy is hit when the expanding thick ring sweeps over them
-        if (dist <= ring.radius + 15 && dist >= ring.radius - 28) {
+        const hitRadius = enemy.championType === 'Boss' ? 17 : 15;
+        if (dist <= ring.radius + hitRadius && dist >= ring.radius - 28 - hitRadius) {
           ring.hitEnemies.add(enemy);
           const killed = enemy.takeDamage(
             ring.centerX,
             ring.centerY,
             this.env.area,
-            5,
+            2.5,
             34,
             0.5,
           );
@@ -2217,7 +3061,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private triggerRoll() {
-    if (this.currentAction === 'roll') return;
+    if (this.currentAction === 'roll' || this.cooldownDash > 0) return;
+    this.cooldownDash = this.maxCooldownDash;
 
     const moveVector = this.getMovementInput();
     if (moveVector.lengthSq() > 0) {
@@ -2290,13 +3135,21 @@ export class GameScene extends Phaser.Scene {
     this.playDirectional('Die', this.currentAimDir, false);
     this.player.setDepth(DEPTH.groundDecal + 100 + this.player.y * 0.001);
 
+    if (this.controlsPopupContainer) {
+      this.controlsPopupContainer.destroy();
+      this.controlsPopupContainer = undefined;
+      this.isControlsPopupOpen = false;
+    }
+
     // Fade out combat UI
     const hudTargets: Phaser.GameObjects.GameObject[] = [];
     if (this.healthContainer) hudTargets.push(this.healthContainer);
+    if (this.uContainer) hudTargets.push(this.uContainer);
     if (this.cooldownContainer) hudTargets.push(this.cooldownContainer);
-    if (this.lightLevelText) hudTargets.push(this.lightLevelText);
     if (this.cornerWaveText) hudTargets.push(this.cornerWaveText);
+    if (this.scoreContainer) hudTargets.push(this.scoreContainer);
     if (this.scoreText) hudTargets.push(this.scoreText);
+    if (this.lightLevelText) hudTargets.push(this.lightLevelText);
     for (const p of this.killPopups) {
       if (p.text) hudTargets.push(p.text);
     }
@@ -2326,11 +3179,16 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Darken environment
+    this.targetBlackPoint = -0.50;
     this.blackPoint = -0.50;
     this.applyBlackPoint();
 
-    this.time.delayedCall(400, () => {
-      this.announceWave('FALLEN', 'The shadows consume you', true);
+    // Transition directly to the medieval fantasy GameOver screen (with options)
+    this.time.delayedCall(1200, () => {
+      this.scene.start('GameOver', {
+        levelId: this.level.id,
+        sceneKey: this.scene.key,
+      });
     });
   }
 
@@ -2359,8 +3217,12 @@ export class GameScene extends Phaser.Scene {
       const dy = enemy.y - this.player.y;
       const dist = Math.hypot(dx, dy);
 
-      // Player melee attack range
-      if (dist > profile.reach) continue;
+      // Boss hitbox reduced by another 50% (17px radius), Zed is 22px, normal minion is 14px
+      const enemyHitRadius = enemy.championType === 'Boss' ? 17 : enemy.championType === 'Zed' ? 22 : 14;
+
+      // Player melee attack range: check distance against enemy's outer hit radius
+      const effectiveDist = Math.max(0, dist - enemyHitRadius);
+      if (effectiveDist > profile.reach) continue;
 
       // Cannot hit enemies through solid walls/blockers (e.g. through the central altar)
       if (this.env.area && !this.env.area.hasLineOfSight(this.player.x, this.player.y, enemy.x, enemy.y, 8)) {
@@ -2368,8 +3230,8 @@ export class GameScene extends Phaser.Scene {
       }
 
       let isHit = false;
-      if (profile.is360) {
-        // 360-degree hit radius around the player
+      if (profile.is360 || dist <= enemyHitRadius) {
+        // 360-degree hit radius around the player, or player is right next to/inside the enemy's legs/body
         isHit = true;
       } else {
         // Check angle relative to player facing direction
@@ -2381,7 +3243,10 @@ export class GameScene extends Phaser.Scene {
         let diff = Math.abs(degToEnemy - playerFacingDeg);
         if (diff > 180) diff = 360 - diff;
 
-        if (diff <= profile.halfAngleDeg) {
+        // Angular span subtended by the enemy's hitbox from the player's position
+        const angularSpanDeg = Math.asin(Math.min(1.0, enemyHitRadius / Math.max(1, dist))) * (180 / Math.PI);
+
+        if (diff <= profile.halfAngleDeg + angularSpanDeg) {
           isHit = true;
         }
       }
@@ -2534,7 +3399,7 @@ export class GameScene extends Phaser.Scene {
       if (enemy.isDead || enemy.isStumbling || !enemy.isAttackInDamageWindow()) continue;
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-      const maxHitDist = enemy.championType === 'Boss' ? 120 : (enemy.championType === 'Enemy3' ? 55 : 75);
+      const maxHitDist = enemy.championType === 'Boss' ? 55 : (enemy.championType === 'Enemy3' ? 55 : 75);
       if (dist > maxHitDist) continue;
 
       // Frontal cone check: attacks only hit within 190° forward arc of the attacker.

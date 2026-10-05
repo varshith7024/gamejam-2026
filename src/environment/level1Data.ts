@@ -14,6 +14,7 @@ export const LEVEL1: LevelData = {
   masterFile: 'veil_master.png',
   roster: { light: 'Yi', heavy: 'Zed' },
   nextScene: 'Level2', // after the last wave: The Veil -> The Conduit
+  initialLightLevel: -0.50, // Level 1 starts at -50%
   world: { width: 1538, height: 1023 },
   floorCenter: { x: 817, y: 511 },
   playerStart: { x: 830, y: 545 },

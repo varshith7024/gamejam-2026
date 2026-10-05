@@ -29,6 +29,8 @@ export const LEVEL2: LevelData = {
   subtitle: TEXT.level2Subtitle,
   assetBase: 'assets/level2/',
   masterFile: 'conduit_master.png',
+  nextScene: 'Level3',
+  initialLightLevel: -0.10, // Level 2 starts at -10%
   world: { width: Math.round(1280 * S), height: Math.round(720 * S) },
   floorCenter: p(690, 345),
   playerStart: p(640, 440), // open floor just south of the central altar

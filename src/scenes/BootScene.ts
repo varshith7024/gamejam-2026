@@ -20,6 +20,7 @@ import { LEVEL2 } from '../environment/level2Data';
 import { LEVEL3 } from '../environment/level3Data';
 import { Atmosphere } from '../effects/Atmosphere';
 import { resolveStartScene } from '../config/dev';
+import { ColorCurvePipeline } from '../shaders/ColorCurvePipeline';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -37,6 +38,19 @@ export class BootScene extends Phaser.Scene {
       frameHeight: ORB_CONFIG.frameHeight,
       endFrame: ORB_CONFIG.frames * ORB_CONFIG.directions - 1,
     });
+
+    // Preload Ability Icons & HUD Frames
+    this.load.image('icon_sword', 'assets/ability/sword_normal.png');
+    this.load.image('icon_dash', 'assets/ability/dash.png');
+    this.load.spritesheet('icon_whirlwind', 'assets/ability/whirlwind.png', {
+      frameWidth: 16,
+      frameHeight: 19,
+    });
+    this.load.image('icon_pummel', 'assets/ability/pummel.png');
+    this.load.image('icon_overhead', 'assets/ability/overhead.png');
+    this.load.image('icon_kick', 'assets/ability/kick.png');
+    this.load.image('ultimate_bar', 'assets/ability/ultimate_bar.png');
+    this.load.image('ultimatebar', 'assets/ability/ultimate_bar.png');
 
     // Preload Knight animations (1920x1024, 15 cols x 8 rows)
     for (const anim of KNIGHT_ANIMATIONS) {
@@ -333,6 +347,28 @@ export class BootScene extends Phaser.Scene {
           repeat: 0,
         });
       }
+    }
+
+    if (!this.anims.exists('anim_icon_whirlwind')) {
+      this.anims.create({
+        key: 'anim_icon_whirlwind',
+        frames: this.anims.generateFrameNumbers('icon_whirlwind', { start: 0, end: 3 }),
+        frameRate: 6,
+        repeat: -1,
+      });
+    }
+
+    for (const key of ['icon_sword', 'icon_dash', 'icon_whirlwind', 'icon_pummel', 'icon_overhead', 'icon_kick']) {
+      if (this.textures.exists(key)) {
+        this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+    }
+
+    if (this.renderer instanceof Phaser.Renderer.WebGL.WebGLRenderer) {
+      this.renderer.pipelines.addPostPipeline(
+        ColorCurvePipeline.PIPELINE_NAME,
+        ColorCurvePipeline,
+      );
     }
 
     this.scene.start(resolveStartScene());

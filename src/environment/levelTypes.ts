@@ -57,4 +57,6 @@ export interface LevelData {
   entries?: EnemyEntry[];
   /** Optional scene to start after the last wave is cleared. */
   nextScene?: string;
+  /** Initial light level percentage (-1.0 to 1.0) when entering the level. */
+  initialLightLevel?: number;
 }

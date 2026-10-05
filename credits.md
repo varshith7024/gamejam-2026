@@ -5,6 +5,9 @@ Yi - https://www.spriters-resource.com/custom_edited/leagueoflegendscustoms/asse
 Zed - https://www.spriters-resource.com/custom_edited/leagueoflegendscustoms/asset/106070/
 Knight - https://smallscaleint.itch.io/hd-8-directional-top-down-character-pack-1
 
+Ability icons:
+https://opengameart.org/content/sword-normal
+
 todo:
 add health orbs
 add powerup orbs

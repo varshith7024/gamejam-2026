@@ -28,12 +28,14 @@ export class Atmosphere {
       scene.load.image(Atmosphere.key(level, k), `atmos_${k}.png`);
   }
 
-  create() {
+  create(options: { vignette?: boolean } = {}) {
     this.makeParticleTextures();
     this.createFogBanks();
     this.createSheetSprites();
     this.createEmitters();
-    this.createVignette();
+    if (options.vignette !== false) {
+      this.createVignette();
+    }
   }
 
   private makeParticleTextures() {
