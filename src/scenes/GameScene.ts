@@ -243,6 +243,11 @@ export class GameScene extends Phaser.Scene {
   private isDead = false;
   private enemyHitCooldown = 0;
 
+  // Audio state
+  private battleMusic?: Phaser.Sound.BaseSound;
+  private heartbeatSound?: Phaser.Sound.BaseSound;
+  private lastShockwaveHitTime = 0;
+
   // Speeds (pixels per second)
   private readonly WALK_SPEED = 180;
   private readonly RUN_SPEED = 320;
@@ -343,13 +348,22 @@ export class GameScene extends Phaser.Scene {
     this.currentAction = 'idle';
     this.actionVelocity.set(0, 0);
     Enemy.currentTeleporter = null;
+    if (this.heartbeatSound) {
+      this.heartbeatSound.stop();
+      this.heartbeatSound.destroy();
+      this.heartbeatSound = undefined;
+    }
+    this.lastShockwaveHitTime = 0;
   }
 
   create() {
     this.resetSceneState();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.stopAllCombatAudio();
       this.resetSceneState();
     });
+
+    this.startBattleMusic();
 
     this.cameras.main.setBackgroundColor('#000000');
     this.input.mouse?.disableContextMenu();
@@ -397,6 +411,50 @@ export class GameScene extends Phaser.Scene {
       this.env.setDebug(true);
       (window as unknown as Record<string, unknown>).__level1 = this;
     }
+  }
+
+  // -----------------------------------------------------------------
+  // COMBAT AUDIO MANAGEMENT
+  // -----------------------------------------------------------------
+  private startBattleMusic() {
+    const playMusic = () => {
+      if (this.isDead) return;
+      this.sound.stopByKey('menumusic');
+      this.sound.stopByKey('victory');
+
+      const existing = this.sound.getAll('battleMusic');
+      for (const b of existing) {
+        if (b.isPlaying) {
+          this.battleMusic = b;
+          return;
+        }
+      }
+
+      this.battleMusic = this.sound.add('battleMusic', { loop: true, volume: 0.40 });
+      this.battleMusic.play();
+    };
+
+    if (this.sound.locked) {
+      this.sound.once(Phaser.Sound.Events.UNLOCKED, playMusic);
+    } else {
+      playMusic();
+    }
+  }
+
+  private stopAllCombatAudio() {
+    if (this.heartbeatSound) {
+      this.heartbeatSound.stop();
+      this.heartbeatSound.destroy();
+      this.heartbeatSound = undefined;
+    }
+    if (this.battleMusic) {
+      this.battleMusic.stop();
+      this.battleMusic.destroy();
+      this.battleMusic = undefined;
+    }
+    this.sound.stopByKey('battleMusic');
+    this.sound.stopByKey('heartbeat');
+    this.sound.stopByKey('victory');
   }
 
   // -----------------------------------------------------------------
@@ -633,6 +691,24 @@ export class GameScene extends Phaser.Scene {
         this.hpText.setColor('#ff4d4d');
       } else {
         this.hpText.setColor('#ffffff');
+      }
+    }
+
+    this.updateHeartbeat();
+  }
+
+  private updateHeartbeat() {
+    const isLowHp = this.health <= 25 && !this.isDead;
+    if (isLowHp) {
+      if (!this.heartbeatSound) {
+        this.heartbeatSound = this.sound.add('heartbeat', { loop: true, volume: 0.70 });
+        this.heartbeatSound.play();
+      } else if (!this.heartbeatSound.isPlaying) {
+        this.heartbeatSound.play();
+      }
+    } else {
+      if (this.heartbeatSound && this.heartbeatSound.isPlaying) {
+        this.heartbeatSound.stop();
       }
     }
   }
@@ -1784,15 +1860,18 @@ export class GameScene extends Phaser.Scene {
 
     if (waveNum === 1) {
       if (this.level.id === 'level3') {
+        this.sound.play('waveStart', { volume: 0.70 });
         this.startWave1();
       } else {
         // Delay wave 1 announcement slightly so "The Veil" title card displays first
         this.time.delayedCall(3000, () => {
+          this.sound.play('waveStart', { volume: 0.70 });
           this.announceWave(`WAVE ${waveRoman}`);
         });
         this.startWave1();
       }
     } else {
+      this.sound.play('waveStart', { volume: 0.70 });
       this.announceWave(`WAVE ${waveRoman}`);
       if (waveNum === 2) {
         this.startWave2();
@@ -2201,6 +2280,22 @@ export class GameScene extends Phaser.Scene {
           if (this.cornerWaveText) {
             this.cornerWaveText.setText('VICTORY');
           }
+          if (this.heartbeatSound && this.heartbeatSound.isPlaying) {
+            this.heartbeatSound.stop();
+          }
+          if (this.battleMusic && this.battleMusic.isPlaying) {
+            this.tweens.add({
+              targets: this.battleMusic,
+              volume: 0,
+              duration: 1000,
+              onComplete: () => {
+                this.battleMusic?.stop();
+                this.battleMusic?.destroy();
+                this.battleMusic = undefined;
+              },
+            });
+          }
+          this.sound.play('victory', { volume: 0.80 });
           this.announceWave('VICTORY');
         }
       }
@@ -2301,6 +2396,22 @@ export class GameScene extends Phaser.Scene {
         if (this.cornerWaveText) {
           this.cornerWaveText.setText('VICTORY');
         }
+        if (this.heartbeatSound && this.heartbeatSound.isPlaying) {
+          this.heartbeatSound.stop();
+        }
+        if (this.battleMusic && this.battleMusic.isPlaying) {
+          this.tweens.add({
+            targets: this.battleMusic,
+            volume: 0,
+            duration: 1000,
+            onComplete: () => {
+              this.battleMusic?.stop();
+              this.battleMusic?.destroy();
+              this.battleMusic = undefined;
+            },
+          });
+        }
+        this.sound.play('victory', { volume: 0.80 });
         this.announceWave('VICTORY');
         if (this.level.nextScene) {
           const next = this.level.nextScene;
@@ -2675,6 +2786,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'kick';
     this.playDirectional('Kick', this.currentAimDir, false);
+    this.sound.play('triggerKick', { volume: 0.65 });
     this.scheduleAttackHitCheck(140, KICK_PROFILE);
   }
 
@@ -2684,6 +2796,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'attack';
     this.playDirectional('MeleeSpin', this.currentAimDir, false);
+    this.sound.play('whirlwind', { volume: 0.75 });
     this.scheduleAttackHitCheck(280, WHIRLWIND_PROFILE);
   }
 
@@ -2693,6 +2806,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'pummel';
     this.playDirectional('Pummel', this.currentAimDir, false);
+    this.sound.play('triggerPummel', { volume: 0.70 });
     this.scheduleAttackHitCheck(160, PUMMEL_PROFILE);
   }
 
@@ -2702,6 +2816,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'special1';
     this.playDirectional('Special1', this.currentAimDir, false);
+    this.sound.play('triggerOverhead', { volume: 0.75 });
     this.scheduleAttackHitCheck(190, OVERHEAD_PROFILE);
   }
 
@@ -2715,6 +2830,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'spell';
     this.playDirectional('CastSpell', this.currentAimDir, false);
+    this.sound.play('triggerLightOrb', { volume: 0.70 });
 
     // Ball travel parameters in 2.5D perspective
     const dirRad = Phaser.Math.DegToRad(this.actionDir * 45);
@@ -2850,6 +2966,7 @@ export class GameScene extends Phaser.Scene {
 
   private detonateOrb(orb: LightOrb) {
     orb.active = false;
+    this.sound.play('detonateOrb', { volume: 0.65 });
     if (orb.shadow) {
       orb.shadow.destroy();
     }
@@ -2903,6 +3020,7 @@ export class GameScene extends Phaser.Scene {
     this.actionVelocity.set(0, 0);
     this.isCastingShockwave = true;
     this.playDirectional('Special2', this.currentAimDir, false);
+    this.sound.play('triggerShockwave', { volume: 0.80 });
 
     // Shockwave center at player's ground contact
     const originX = this.player.x;
@@ -3138,6 +3256,10 @@ export class GameScene extends Phaser.Scene {
         const hitRadius = enemy.championType === 'Boss' ? 17 : 15;
         if (dist <= ring.radius + hitRadius && dist >= ring.radius - 28 - hitRadius) {
           ring.hitEnemies.add(enemy);
+          if (this.time.now - this.lastShockwaveHitTime > 120) {
+            this.lastShockwaveHitTime = this.time.now;
+            this.sound.play('updateShockwaves', { volume: 0.60 });
+          }
           const killed = enemy.takeDamage(
             ring.centerX,
             ring.centerY,
@@ -3205,6 +3327,7 @@ export class GameScene extends Phaser.Scene {
       this.actionDir = this.currentAimDir;
       this.currentAction = 'attack';
       this.playDirectional('MeleeRun', this.currentAimDir, false);
+      this.sound.play('triggerAttack', { volume: 0.55 });
       this.scheduleAttackHitCheck(120, SPRINT_ATTACK_PROFILE);
       return;
     }
@@ -3234,6 +3357,7 @@ export class GameScene extends Phaser.Scene {
     this.actionDir = this.currentAimDir;
     this.currentAction = 'attack';
     this.playDirectional(nextAnim, this.currentAimDir, false);
+    this.sound.play('triggerAttack', { volume: 0.55 });
     this.scheduleAttackHitCheck(hitDelay, BASIC_ATTACK_PROFILE);
 
     this.comboResetTimer = this.time.delayedCall(1200, () => {
@@ -3244,6 +3368,7 @@ export class GameScene extends Phaser.Scene {
   private triggerRoll() {
     if (this.currentAction === 'roll' || this.cooldownDash > 0) return;
     this.cooldownDash = this.maxCooldownDash;
+    this.sound.play('triggerRoll', { volume: 0.60 });
 
     const moveVector = this.getMovementInput();
     if (moveVector.lengthSq() > 0) {
@@ -3302,6 +3427,22 @@ export class GameScene extends Phaser.Scene {
     this.actionVelocity.set(0, 0);
     this.sprintTimer = 0;
     this.isCastingShockwave = false;
+
+    if (this.heartbeatSound && this.heartbeatSound.isPlaying) {
+      this.heartbeatSound.stop();
+    }
+    if (this.battleMusic && this.battleMusic.isPlaying) {
+      this.tweens.add({
+        targets: this.battleMusic,
+        volume: 0,
+        duration: 1000,
+        onComplete: () => {
+          this.battleMusic?.stop();
+          this.battleMusic?.destroy();
+          this.battleMusic = undefined;
+        },
+      });
+    }
 
     for (const orb of this.activeOrbs) {
       if (orb.shadow) orb.shadow.destroy();
@@ -3391,6 +3532,7 @@ export class GameScene extends Phaser.Scene {
     if (this.enemies.length === 0 || this.isDead) return;
 
     let hasKills = false;
+    let anyHit = false;
 
     for (const enemy of this.enemies) {
       if (enemy.isDead) continue;
@@ -3434,6 +3576,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (isHit) {
+        anyHit = true;
         const dmg = enemy.championType === 'Zed' || enemy.championType === 'Boss' ? profile.damageZed : profile.damageYi;
         const killed = enemy.takeDamage(
           this.player.x,
@@ -3448,6 +3591,10 @@ export class GameScene extends Phaser.Scene {
           this.onEnemyDefeated(enemy, 'normal');
         }
       }
+    }
+
+    if (anyHit) {
+      this.sound.play('checkPlayerAttackHit', { volume: 0.60 });
     }
 
     if (hasKills) {

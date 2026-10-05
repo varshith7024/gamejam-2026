@@ -31,6 +31,11 @@ export class GameOverScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#000000');
     this.cameras.main.fadeIn(600, 0, 0, 0);
 
+    // Stop combat audio
+    this.sound.stopByKey('battleMusic');
+    this.sound.stopByKey('heartbeat');
+    this.sound.stopByKey('victory');
+
     const centerX = width / 2;
     const centerY = height * 0.40;
 

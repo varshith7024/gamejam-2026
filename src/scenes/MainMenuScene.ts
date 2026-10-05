@@ -10,6 +10,7 @@ export class MainMenuScene extends Phaser.Scene {
   private animSequence: string[] = ['idle', 'attack', 'disappear', 'appear'];
   private currentAnimIndex = 0;
   private isStartingGame = false;
+  private menuMusic?: Phaser.Sound.BaseSound;
 
   constructor() {
     super('MainMenu');
@@ -19,6 +20,17 @@ export class MainMenuScene extends Phaser.Scene {
     this.isStartingGame = false;
     this.currentAnimIndex = 0;
     const { width, height } = this.scale;
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      if (this.menuMusic) {
+        this.menuMusic.stop();
+        this.menuMusic.destroy();
+        this.menuMusic = undefined;
+      }
+    });
+
+    // Start menu background music
+    this.startMenuMusic();
 
     // 1. Build Level 1 Environment as dynamic moving background
     this.env = new Level1Environment(this, LEVEL1);
@@ -40,6 +52,31 @@ export class MainMenuScene extends Phaser.Scene {
 
     // Fade camera in from black
     this.cameras.main.fadeIn(800, 0, 0, 0);
+  }
+
+  private startMenuMusic() {
+    const playMusic = () => {
+      if (this.isStartingGame) return;
+      this.sound.stopByKey('battleMusic');
+      this.sound.stopByKey('victory');
+
+      const existing = this.sound.getAll('menumusic');
+      for (const m of existing) {
+        if (m.isPlaying) {
+          this.menuMusic = m;
+          return;
+        }
+      }
+
+      this.menuMusic = this.sound.add('menumusic', { loop: true, volume: 0.70 });
+      this.menuMusic.play();
+    };
+
+    if (this.sound.locked) {
+      this.sound.once(Phaser.Sound.Events.UNLOCKED, playMusic);
+    } else {
+      playMusic();
+    }
   }
 
   private createMenuUI(width: number, height: number) {
@@ -103,6 +140,19 @@ export class MainMenuScene extends Phaser.Scene {
     const onPlay = () => {
       if (this.isStartingGame) return;
       this.isStartingGame = true;
+
+      if (this.menuMusic && this.menuMusic.isPlaying) {
+        this.tweens.add({
+          targets: this.menuMusic,
+          volume: 0,
+          duration: 450,
+          onComplete: () => {
+            this.menuMusic?.stop();
+            this.menuMusic?.destroy();
+            this.menuMusic = undefined;
+          },
+        });
+      }
 
       playText.setColor('#ffd700');
       this.cameras.main.fade(500, 0, 0, 0);

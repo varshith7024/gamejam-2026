@@ -52,6 +52,25 @@ export class BootScene extends Phaser.Scene {
     this.load.image('ultimate_bar', 'assets/ability/ultimate_bar.png');
     this.load.image('ultimatebar', 'assets/ability/ultimate_bar.png');
 
+    // Preload Audio Assets
+    this.load.audio('battleMusic', 'assets/audio/battleMusic.wav');
+    this.load.audio('menumusic', 'assets/audio/menumusic.wav');
+    this.load.audio('waveStart', 'assets/audio/waveStart.wav');
+    this.load.audio('victory', 'assets/audio/victory.mp3');
+    this.load.audio('heartbeat', 'assets/audio/heartbeat.wav');
+    this.load.audio('triggerAttack', 'assets/audio/triggerAttack.wav');
+    this.load.audio('checkPlayerAttackHit', 'assets/audio/checkPlayerAttackHit.wav');
+    this.load.audio('triggerRoll', 'assets/audio/triggerRoll.wav');
+    this.load.audio('triggerKick', 'assets/audio/triggerKick.wav');
+    this.load.audio('whirlwind', 'assets/audio/whirlwind.mp3');
+    this.load.audio('triggerWhirlwind', 'assets/audio/whirlwind.mp3');
+    this.load.audio('triggerPummel', 'assets/audio/triggerPummel.wav');
+    this.load.audio('triggerOverhead', 'assets/audio/triggerOverhead.wav');
+    this.load.audio('triggerLightOrb', 'assets/audio/triggerLightOrb.wav');
+    this.load.audio('detonateOrb', 'assets/audio/detonateOrb.wav');
+    this.load.audio('triggerShockwave', 'assets/audio/triggerShockwave.wav');
+    this.load.audio('updateShockwaves', 'assets/audio/updateShockwaves.wav');
+
     // Preload Knight animations (1920x1024, 15 cols x 8 rows)
     for (const anim of KNIGHT_ANIMATIONS) {
       this.load.spritesheet(anim.key, `assets/knight/${anim.fileName}`, {
