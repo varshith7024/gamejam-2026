@@ -6,10 +6,18 @@ import {
   FRAMES_PER_DIR,
   NUM_DIRECTIONS,
 } from '../config/animations';
-import { YI_CONFIG, ZED_CONFIG, ORB_CONFIG, ENEMY3_CONFIG } from '../config/championAnimations';
+import {
+  YI_CONFIG,
+  ZED_CONFIG,
+  ORB_CONFIG,
+  ENEMY3_CONFIG,
+  BOSS_DIRS,
+  BOSS_FRAME_COUNTS,
+} from '../config/championAnimations';
 import { Level1Environment } from '../environment/Level1Environment';
 import { LEVEL1 } from '../environment/level1Data';
 import { LEVEL2 } from '../environment/level2Data';
+import { LEVEL3 } from '../environment/level3Data';
 import { Atmosphere } from '../effects/Atmosphere';
 import { resolveStartScene } from '../config/dev';
 
@@ -66,8 +74,23 @@ export class BootScene extends Phaser.Scene {
       });
     }
 
+    // Preload Boss animations (8 directions: idle, walk, attack)
+    for (let dir = 0; dir < 8; dir++) {
+      const dName = BOSS_DIRS[dir];
+      for (const anim of ['idle', 'walk', 'attack']) {
+        this.load.spritesheet(
+          `Boss_${anim}_${dir}`,
+          `assets/boss_ink/${dName}/${dName}_${anim}.png`,
+          {
+            frameWidth: 256,
+            frameHeight: 256,
+          },
+        );
+      }
+    }
+
     // Preload each level's environment & atmospheric effects (same loaders, per-level data)
-    for (const level of [LEVEL1, LEVEL2]) {
+    for (const level of [LEVEL1, LEVEL2, LEVEL3]) {
       Level1Environment.preload(this, level);
       Atmosphere.preload(this, level);
     }
@@ -262,6 +285,51 @@ export class BootScene extends Phaser.Scene {
             end: disRow * 8 + 7,
           }),
           frameRate: 10,
+          repeat: 0,
+        });
+      }
+    }
+
+    // Register 8-directional Boss animations
+    for (let dir = 0; dir < 8; dir++) {
+      const dName = BOSS_DIRS[dir];
+      const counts = BOSS_FRAME_COUNTS[dName];
+
+      const idleKey = `Boss_idle_${dir}`;
+      if (!this.anims.exists(idleKey)) {
+        this.anims.create({
+          key: idleKey,
+          frames: this.anims.generateFrameNumbers(idleKey, {
+            start: 0,
+            end: counts.idle - 1,
+          }),
+          frameRate: 10,
+          repeat: -1,
+        });
+      }
+
+      const walkKey = `Boss_walk_${dir}`;
+      if (!this.anims.exists(walkKey)) {
+        this.anims.create({
+          key: walkKey,
+          frames: this.anims.generateFrameNumbers(walkKey, {
+            start: 0,
+            end: counts.walk - 1,
+          }),
+          frameRate: 12,
+          repeat: -1,
+        });
+      }
+
+      const attackKey = `Boss_attack_${dir}`;
+      if (!this.anims.exists(attackKey)) {
+        this.anims.create({
+          key: attackKey,
+          frames: this.anims.generateFrameNumbers(attackKey, {
+            start: 0,
+            end: counts.attack - 1,
+          }),
+          frameRate: 15,
           repeat: 0,
         });
       }

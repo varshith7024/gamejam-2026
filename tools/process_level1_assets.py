@@ -177,13 +177,17 @@ def key_atmosphere(sheet=None, out=None, boxes=None) -> int:
 
 def cut_occluders(master_img=None, out=None, occluders=None, feather=0.0) -> list:
     """Cut walk-behind overlays out of the master. Defaults = Level 1 (feather=0). feather>0 = gaussian-softened edge (px)."""
-    master = (master_img or Image.open(SRC / "master/veil_master_concept.png")).convert("RGB")
+    upscaled = SRC / "master/veil_master_concept_upscayl_4x_digital-art-4x.png"
+    fallback = SRC / "master/veil_master_concept.png"
+    master_path = upscaled if upscaled.exists() else fallback
+    master = (master_img or Image.open(master_path)).convert("RGB")
     out = out or OUT
     occluders = occluders or OCCLUDERS
     out_dir = out / "occluders"
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest = []
     SS = 4  # supersample the mask for antialiased polygon edges
+    scale = master.width / 1538.0
     for name, spec in occluders.items():
         poly = spec["polygon"]
         xs, ys = [p[0] for p in poly], [p[1] for p in poly]
@@ -196,7 +200,10 @@ def cut_occluders(master_img=None, out=None, occluders=None, feather=0.0) -> lis
         if feather > 0:
             from PIL import ImageFilter
             alpha = alpha.filter(ImageFilter.GaussianBlur(feather))
-        crop = master.crop((x0, y0, x1, y1)).convert("RGBA")
+        crop_box = (int(round(x0 * scale)), int(round(y0 * scale)), int(round(x1 * scale)), int(round(y1 * scale)))
+        crop = master.crop(crop_box).convert("RGBA")
+        if crop.size != (w, h):
+            crop = crop.resize((w, h), Image.LANCZOS)
         crop.putalpha(alpha)
         fname = f"occ_{name}.png"
         crop.save(out_dir / fname, optimize=True)
@@ -207,8 +214,16 @@ def cut_occluders(master_img=None, out=None, occluders=None, feather=0.0) -> lis
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(SRC / "master/veil_master_concept.png", OUT / "veil_master.png")  # processed COPY; original untouched
-    print("master    : copied")
+    upscaled = SRC / "master/veil_master_concept_upscayl_4x_digital-art-4x.png"
+    if upscaled.exists():
+        im = Image.open(upscaled).convert("RGB")
+        # 2x supersampled master (3076x2046) for max detail at 1.4x zoom without exceeding WebGL limits
+        im_2x = im.resize((3076, 2046), Image.LANCZOS)
+        im_2x.save(OUT / "veil_master.png", optimize=True)
+        print("master    : 2x supersampled (3076x2046) generated from 4x upscaled master")
+    else:
+        shutil.copyfile(SRC / "master/veil_master_concept.png", OUT / "veil_master.png")
+        print("master    : copied")
     print(f"props     : {key_props()} keyed")
     print(f"atmosphere: {key_atmosphere()} converted")
     print(f"occluders : {len(cut_occluders())} cut")

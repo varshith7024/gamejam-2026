@@ -802,11 +802,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (waveNum === 1) {
-      // Delay wave 1 announcement slightly so "The Veil" title card displays first
-      this.time.delayedCall(3000, () => {
-        this.announceWave(`WAVE ${waveRoman}`);
-      });
-      this.startWave1();
+      if (this.level.id === 'level3') {
+        this.time.delayedCall(2200, () => {
+          this.announceWave('THE EXECUTIONER');
+        });
+        this.startWave1();
+      } else {
+        // Delay wave 1 announcement slightly so "The Veil" title card displays first
+        this.time.delayedCall(3000, () => {
+          this.announceWave(`WAVE ${waveRoman}`);
+        });
+        this.startWave1();
+      }
     } else {
       this.announceWave(`WAVE ${waveRoman}`);
       if (waveNum === 2) {
@@ -819,6 +826,16 @@ export class GameScene extends Phaser.Scene {
 
   // Wave 1: 3 Yis per interval (3 intervals = 9 Yis total) spaced out, then 2 Zeds after defeating all of them
   private startWave1() {
+    if (this.level.id === 'level3') {
+      this.wavePendingSpawns = 0;
+      const bossX = this.level.floorCenter.x;
+      const bossY = this.level.floorCenter.y - 70;
+      const boss = new Enemy(this, bossX, bossY, 'Boss', this.level.floorCenter);
+      this.enemies.push(boss);
+      this.waveGroupEnemies.push(boss);
+      return;
+    }
+
     this.wavePendingSpawns = 9;
     const baseAngles = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3];
     const offsets = [-50, 0, 50];
@@ -1164,6 +1181,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkWaveProgress() {
+    if (this.level.id === 'level3') {
+      const activeInGroup = this.waveGroupEnemies.filter((e) => !e.isDead);
+      if (this.wavePendingSpawns === 0 && activeInGroup.length === 0 && this.waveGroupEnemies.length > 0) {
+        if (this.wavePhase === 0) {
+          this.wavePhase = 1;
+          if (this.cornerWaveText) {
+            this.cornerWaveText.setText('VICTORY');
+          }
+          this.announceWave('VICTORY');
+        }
+      }
+      return;
+    }
+
     const activeInGroup = this.waveGroupEnemies.filter((e) => !e.isDead);
 
     // Wave 1 Progression
@@ -1289,6 +1320,21 @@ export class GameScene extends Phaser.Scene {
     this.keyH = kb.addKey(Phaser.Input.Keyboard.KeyCodes.H);
     this.keyK = kb.addKey(Phaser.Input.Keyboard.KeyCodes.K);
     this.keyG = kb.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+
+    // Quick Level Navigation Hotkeys: 1 (Level 1), 2 (Level 2), 3 (Level 3 Boss Arena)
+    const key1 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
+    key1.on('down', () => this.scene.start('Level1'));
+    const key2 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
+    key2.on('down', () => this.scene.start('Level2'));
+    const key3 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
+    key3.on('down', () => this.scene.start('Level3'));
+
+    const num1 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ONE);
+    num1.on('down', () => this.scene.start('Level1'));
+    const num2 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_TWO);
+    num2.on('down', () => this.scene.start('Level2'));
+    const num3 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_THREE);
+    num3.on('down', () => this.scene.start('Level3'));
 
     // Left Click Attack
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -2341,7 +2387,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (isHit) {
-        const dmg = enemy.championType === 'Zed' ? profile.damageZed : profile.damageYi;
+        const dmg = enemy.championType === 'Zed' || enemy.championType === 'Boss' ? profile.damageZed : profile.damageYi;
         const killed = enemy.takeDamage(
           this.player.x,
           this.player.y,
@@ -2406,23 +2452,38 @@ export class GameScene extends Phaser.Scene {
             const px = nx * pushMag;
             const py = ny * pushMag * 0.8;
 
-            e1.pushBody(-px, -py, this.env.area);
-            e2.pushBody(px, py, this.env.area);
+            // Boss has high poise against minions
+            if (e1.championType === 'Boss') {
+              e2.pushBody(px * 2, py * 2, this.env.area);
+            } else if (e2.championType === 'Boss') {
+              e1.pushBody(-px * 2, -py * 2, this.env.area);
+            } else {
+              e1.pushBody(-px, -py, this.env.area);
+              e2.pushBody(px, py, this.env.area);
+            }
           }
         }
       }
     }
 
-    // 2. Enemy-to-player standoff (enemies maintain small distance from player, close enough to attack)
+    // 2. Enemy-to-player physical collision
+    // Player is blocked by the Boss (cannot phase through). Boss is a solid, immovable giant!
+    const isPlayerDodging =
+      this.currentAction === 'roll' ||
+      this.currentAction === 'flip' ||
+      this.currentAction === 'slide';
+    const playerRadius = 18;
+
     for (let i = 0; i < count; i++) {
       const e = aliveEnemies[i];
+
       let dx = e.x - this.player.x;
       let dy = (e.y - this.player.y) / 0.8;
       let dist = Math.hypot(dx, dy);
 
-      const minPlayerDist = e.stopDistance * 0.85;
+      const targetMinDist = (playerRadius + e.getCollisionRadius()) * 0.90;
 
-      if (dist < minPlayerDist) {
+      if (dist < targetMinDist) {
         if (dist < 0.001) {
           const angle = Math.random() * Math.PI * 2;
           dx = Math.cos(angle);
@@ -2430,13 +2491,33 @@ export class GameScene extends Phaser.Scene {
           dist = 1;
         }
 
-        const overlap = minPlayerDist - dist;
+        const overlap = targetMinDist - dist;
         const nx = dx / dist;
         const ny = dy / dist;
         const px = nx * overlap;
         const py = ny * overlap * 0.8;
 
-        e.pushBody(px, py, this.env.area);
+        if (e.championType === 'Boss') {
+          // Boss is massive and solid: hero gets blocked and cannot phase through!
+          this.movePlayer(-px, -py);
+
+          // If hero rolled/dashed into the Boss, stop/deflect roll momentum at the Boss's body
+          if (isPlayerDodging) {
+            const dot = this.actionVelocity.x * nx + (this.actionVelocity.y / 0.8) * ny;
+            if (dot > 0) {
+              this.actionVelocity.x -= dot * nx;
+              this.actionVelocity.y -= dot * ny * 0.8;
+            }
+          }
+        } else if (!isPlayerDodging) {
+          // Regular minions (Zed/Yi): walking hero pushes against them
+          if (!e.isPerformingAttack()) {
+            this.movePlayer(-px * 0.5, -py * 0.5);
+            e.pushBody(px * 0.5, py * 0.5, this.env.area);
+          } else {
+            this.movePlayer(-px, -py);
+          }
+        }
       }
     }
   }
@@ -2450,18 +2531,34 @@ export class GameScene extends Phaser.Scene {
     if (this.enemies.length === 0 || this.isDead) return;
 
     for (const enemy of this.enemies) {
-      if (enemy.isDead || enemy.isStumbling || !enemy.isPerformingAttack()) continue;
+      if (enemy.isDead || enemy.isStumbling || !enemy.isAttackInDamageWindow()) continue;
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-      if (dist > 75) continue;
+      const maxHitDist = enemy.championType === 'Boss' ? 120 : (enemy.championType === 'Enemy3' ? 55 : 75);
+      if (dist > maxHitDist) continue;
 
-      // Invulnerable during rolls or flips
+      // Frontal cone check: attacks only hit within 190° forward arc of the attacker.
+      // If the player dodged or stepped behind the enemy during windup, they take no damage.
+      if (enemy.championType !== 'Enemy3') {
+        const dx = this.player.x - enemy.x;
+        const dy = this.player.y - enemy.y;
+        let degToPlayer = Phaser.Math.RadToDeg(Math.atan2(dy, dx));
+        if (degToPlayer < 0) degToPlayer += 360;
+        const facingDeg = enemy.getFacingAngleDeg();
+        let angleDiff = Math.abs(degToPlayer - facingDeg);
+        if (angleDiff > 180) angleDiff = 360 - angleDiff;
+        if (angleDiff > 95) continue; // Behind or flanking outside frontal arc -> escaped damage!
+      }
+
+      // Invulnerable during rolls or flips (i-frames: successfully dodged the strike)
       if (this.currentAction === 'roll' || this.currentAction === 'flip') {
+        enemy.hasHitInCurrentAttack = true;
         return;
       }
 
       // Shield block active: absorb impact, reset enemy cooldown, no damage taken
       if (this.currentAction === 'block') {
+        enemy.hasHitInCurrentAttack = true;
         const rad = Math.atan2(this.player.y - enemy.y, this.player.x - enemy.x);
         this.movePlayer(Math.cos(rad) * 16, Math.sin(rad) * 16);
         enemy.resetAttackCooldown();
@@ -2469,11 +2566,15 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      // Player takes damage without stun: Yi deals 1 (1s cd), Zed deals 5 (0.75s cd)
+      // Strike connects!
+      enemy.hasHitInCurrentAttack = true;
       this.damagePlayer(enemy.attackDamage);
       enemy.resetAttackCooldown();
       this.flashPlayerHurt();
-      this.enemyHitCooldown = enemy.championType === 'Zed' ? 0.35 : 0.5;
+      if (enemy.championType === 'Boss') {
+        this.cameras.main.shake(140, 0.007);
+      }
+      this.enemyHitCooldown = enemy.championType === 'Boss' ? 0.6 : (enemy.championType === 'Zed' ? 0.35 : 0.5);
       return;
     }
   }

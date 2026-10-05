@@ -207,14 +207,22 @@ def render(black, mask, invert, bg):
     return Image.fromarray(out, "RGBA")
 
 
-def save_png(img, dst):
+def save_image(img, dst):
+    ext = os.path.splitext(dst)[1].lower()
+    fmt = Image.registered_extensions().get(ext, "PNG")
+    kwargs = {"lossless": True} if fmt == "WEBP" else {}
     tmp = dst + ".tmp"
     try:
-        img.save(tmp, format="PNG")
+        img.save(tmp, format=fmt, **kwargs)
         os.replace(tmp, dst)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+
+
+save_png = save_image  # Backwards compatibility alias
+
+SUPPORTED_EXTS = {".png", ".webp"}
 
 
 def collect(path, exclude):
@@ -223,7 +231,8 @@ def collect(path, exclude):
     files = []
     for root, _, names in os.walk(path):
         for n in sorted(names):
-            if n.lower().endswith(".png") and not any(
+            ext = os.path.splitext(n)[1].lower()
+            if ext in SUPPORTED_EXTS and not any(
                 fnmatch.fnmatch(n, p) for p in exclude
             ):
                 full = os.path.join(root, n)
@@ -342,6 +351,11 @@ def main():
         metavar="PATTERN",
         help="skip files matching this name pattern, e.g. '*_strip.png' (repeatable)",
     )
+    ap.add_argument(
+        "--png",
+        action="store_true",
+        help="convert all output files to .png",
+    )
     args = ap.parse_args()
 
     if not os.path.exists(args.path):
@@ -352,7 +366,7 @@ def main():
 
     files = collect(args.path, args.exclude)
     if not files:
-        sys.exit("no PNG files found")
+        sys.exit("no supported images found (PNG, WebP)")
     single = os.path.isfile(args.path)
     inplace = args.out is None
     print(
@@ -404,8 +418,10 @@ def main():
                 dst = args.out
             else:
                 dst = os.path.join(args.out, rel)
+            if args.png:
+                dst = os.path.splitext(dst)[0] + ".png"
             os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
-            save_png(result, dst)
+            save_image(result, dst)
             done += 1
             if done % 100 == 0:
                 print(f"{done}/{len(files)}")

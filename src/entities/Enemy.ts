@@ -5,6 +5,7 @@ import {
   YI_CONFIG,
   ZED_CONFIG,
   ENEMY3_CONFIG,
+  BOSS_CONFIG,
 } from '../config/championAnimations';
 import { LEVEL1 } from '../environment/level1Data';
 import type { WalkableArea } from '../environment/Collision';
@@ -59,10 +60,12 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   // AI & Movement State
   private isMoving = true;
   private isActing = false;
+  public hasHitInCurrentAttack = false;
 
   // Clockwise 8 directions: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW (for Yi/Zed), or stdDir 0..7 (for Enemy3)
   private currentDir = 4; // Starts facing South
   private currentAnimKey = '';
+  private turnCooldown = 0;
 
   // Attack stats per champion type
   public attackDamage = 1;
@@ -89,18 +92,29 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     type: ChampionType = 'Yi',
     floorCenter: { x: number; y: number } = LEVEL1.floorCenter,
   ) {
-    const config = type === 'Enemy3' ? ENEMY3_CONFIG : type === 'Zed' ? ZED_CONFIG : YI_CONFIG;
-    super(scene, x, y, `${type}_${config.locomotionAnim}`, 0);
+    const config =
+      type === 'Boss'
+        ? BOSS_CONFIG
+        : type === 'Enemy3'
+          ? ENEMY3_CONFIG
+          : type === 'Zed'
+            ? ZED_CONFIG
+            : YI_CONFIG;
+    super(scene, x, y, type === 'Boss' ? 'Boss_walk_4' : `${type}_${config.locomotionAnim}`, 0);
 
     this.championType = type;
     this.config = config;
     this.maxHp = config.maxHp;
     this.currentHp = this.maxHp;
-    this.attackRange = type === 'Enemy3' ? 44 : type === 'Zed' ? 68 : 50;
-    this.stopDistance = type === 'Enemy3' ? 28 : type === 'Zed' ? 52 : 36;
-    this.attackDamage = type === 'Enemy3' ? 5 : type === 'Zed' ? 5 : 1;
-    this.attackCooldownDuration = type === 'Enemy3' ? 0.5 : type === 'Zed' ? 0.75 : 1.0;
-    this.attackCooldown = this.attackCooldownDuration;
+    this.attackRange =
+      type === 'Boss' ? 115 : type === 'Enemy3' ? 44 : type === 'Zed' ? 68 : 50;
+    this.stopDistance =
+      type === 'Boss' ? 80 : type === 'Enemy3' ? 28 : type === 'Zed' ? 52 : 36;
+    this.attackDamage =
+      type === 'Boss' ? 15 : type === 'Enemy3' ? 5 : type === 'Zed' ? 5 : 1;
+    this.attackCooldownDuration =
+      type === 'Boss' ? 0.3 : type === 'Enemy3' ? 0.5 : type === 'Zed' ? 0.75 : 1.0;
+    this.attackCooldown = type === 'Boss' ? 0 : this.attackCooldownDuration;
 
     this.walkSpeed = Phaser.Math.FloatBetween(
       config.walkSpeed - 5,
@@ -118,6 +132,10 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     const dx = floorCenter.x - x;
     const dy = floorCenter.y - y;
     this.currentDir = this.computeDirection(dx, dy);
+
+    if (type === 'Boss') {
+      this.hasEnteredArena = true;
+    }
 
     if (type === 'Enemy3') {
       // Enemy3 initially spawns at edge of map, then staggers slightly before disappearing
@@ -140,7 +158,8 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.anims.setProgress(Math.random());
     }
 
-    this.attackCooldown = Phaser.Math.FloatBetween(0.5, 2.0);
+    this.attackCooldown =
+      type === 'Boss' ? 0 : Phaser.Math.FloatBetween(0.5, 2.0);
 
     // If spawned on valid land, immediately mark as inside arena
     const area = (scene as any).env?.area;
@@ -179,6 +198,16 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         }
         return;
       }
+      if (this.championType === 'Boss') {
+        if (anim.key.startsWith('Boss_attack_')) {
+          if (this.isActing && !this.isStumbling && !this.isDead) {
+            this.isActing = false;
+            this.turnCooldown = 0.2; // Deliberate recovery pause before pivoting/turning
+            this.startChasing();
+          }
+        }
+        return;
+      }
       if (this.isStumbling) {
         // While stumbling, if get_hit finished, transition to idle stagger
         if (anim.key.includes('get_hit')) {
@@ -196,6 +225,11 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   // Calculate repulsion vector from nearby enemies so horde naturally fans out
   public computeSeparation(otherEnemies: Enemy[]) {
     if (this.isDead) return;
+    if (this.championType === 'Boss') {
+      this.separationX = 0;
+      this.separationY = 0;
+      return;
+    }
     if (this.championType === 'Enemy3' && (this.enemy3State === 'hidden' || !this.visible)) return;
 
     this.separationX = 0;
@@ -217,6 +251,9 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   public getFootY(): number {
+    if (this.championType === 'Boss') {
+      return this.y;
+    }
     if (this.championType === 'Enemy3') {
       return this.y + 27;
     }
@@ -476,26 +513,35 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       if (this.isActing) {
         // Stationary while executing an attack
         this.isMoving = false;
-      } else if (
-        distToPlayer <= this.attackRange &&
-        this.attackCooldown <= 0 &&
-        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 8))
-      ) {
-        // Close enough and clear line of sight: stop and execute an attack
-        this.triggerAttack(playerX, playerY);
-      } else if (
-        distToPlayer <= this.stopDistance &&
-        (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 8))
-      ) {
-        // In striking range! Hold ground, face the player, wait for attack cooldown
-        this.isMoving = false;
-        const faceDir = this.computeDirection(dx, dy);
-        if (faceDir !== this.currentDir || this.currentAnimKey !== 'idle') {
-          this.currentDir = faceDir;
-          this.currentAnimKey = 'idle';
-          this.playChampionAnim('idle', this.currentDir);
-        }
       } else {
+        const isHolding = this.currentAnimKey === 'idle';
+        const resumeWalkThreshold = this.stopDistance + (this.championType === 'Boss' ? 35 : 15);
+        const inHoldRange = isHolding ? distToPlayer <= resumeWalkThreshold : distToPlayer <= this.stopDistance;
+
+        const targetFaceDir = this.computeDirection(dx, dy);
+        const angleDiff = (targetFaceDir - this.currentDir + 8) % 8;
+        const isFacingPlayer = angleDiff === 0 || angleDiff === 1 || angleDiff === 7;
+
+        if (
+          distToPlayer <= this.attackRange &&
+          this.attackCooldown <= 0 &&
+          isFacingPlayer &&
+          (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 8))
+        ) {
+          // Close enough, FACING the player, and clear line of sight: stop and execute an attack
+          this.triggerAttack(playerX, playerY);
+        } else if (
+          inHoldRange &&
+          (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 8))
+        ) {
+          // In striking range! Hold ground, smoothly rotate to face the player
+          this.isMoving = false;
+          this.stepDirectionTowards(targetFaceDir, dt);
+          if (this.currentAnimKey !== 'idle') {
+            this.currentAnimKey = 'idle';
+          }
+          this.playChampionAnim('idle', this.currentDir);
+        } else {
         // Move towards player using locomotion animation
         this.isMoving = true;
         this.currentAnimKey = this.config.locomotionAnim;
@@ -542,8 +588,10 @@ export class Enemy extends Phaser.GameObjects.Sprite {
           }
         }
 
-        const stepX = vx * this.walkSpeed * dt;
-        const stepY = vy * this.walkSpeed * dt * 0.85;
+        // Slow down forward movement during sharp turns so the enemy pivots naturally on their feet
+        const turnSpeedFactor = angleDiff === 0 ? 1.0 : (angleDiff === 1 || angleDiff === 7 ? 0.85 : 0.4);
+        const stepX = vx * this.walkSpeed * turnSpeedFactor * dt;
+        const stepY = vy * this.walkSpeed * turnSpeedFactor * dt * 0.85;
 
         if (area) {
           const p = area.move(this.x, this.y, stepX, stepY, rx, ry);
@@ -554,15 +602,18 @@ export class Enemy extends Phaser.GameObjects.Sprite {
           this.y += stepY;
         }
 
-        // Keep facing direction aligned with movement velocity
-        const moveDir = this.computeDirection(vx, vy);
-        const animKey = `${this.championType}_${this.config.locomotionAnim}_${moveDir}`;
-        if (moveDir !== this.currentDir || this.anims.currentAnim?.key !== animKey) {
-          this.currentDir = moveDir;
+        // Keep facing direction smoothly turning towards target
+        const targetMoveDir = this.championType === 'Boss'
+          ? targetFaceDir
+          : this.computeDirection(vx, vy);
+        this.stepDirectionTowards(targetMoveDir, dt);
+        const animKey = `${this.championType}_${this.config.locomotionAnim}_${this.currentDir}`;
+        if (this.anims.currentAnim?.key !== animKey) {
           this.playChampionAnim(this.config.locomotionAnim, this.currentDir);
         }
       }
     }
+  }
 
     // Depth sorting based on ground feet position
     this.setDepth(this.getFootY());
@@ -572,6 +623,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.isMoving = true;
     this.isActing = false;
     this.isStumbling = false;
+    this.hasHitInCurrentAttack = false;
     this.currentAnimKey = this.config.locomotionAnim;
     this.playChampionAnim(this.config.locomotionAnim, this.currentDir);
   }
@@ -579,20 +631,35 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private triggerAttack(playerX: number, playerY: number) {
     this.isMoving = false;
     this.isActing = true;
+    this.hasHitInCurrentAttack = false;
     this.attackCooldown = this.attackCooldownDuration;
 
-    // Randomly pick one of their action animations
+    // Direct line to player for final attack alignment (only called when already roughly facing target)
+    const targetDir = this.computeDirection(playerX - this.x, playerY - this.y);
+    const diff = (targetDir - this.currentDir + 8) % 8;
+    if (diff === 1 || diff === 7) {
+      this.currentDir = targetDir;
+    }
     const action = Phaser.Utils.Array.GetRandom(this.config.actionAnims);
     this.currentAnimKey = action;
 
-    // Face the player directly when executing the attack
-    this.currentDir = this.computeDirection(playerX - this.x, playerY - this.y);
-    this.playChampionAnim(action, this.currentDir);
+    const key = `${this.championType}_${action}_${this.currentDir}`;
+    if (this.scene.anims.exists(key)) {
+      this.play(key, false);
+      this.anims.setProgress(0);
+    }
 
-    // Attack execution timeout matching 1s attack time for Zed
-    this.scene.time.delayedCall(this.championType === 'Zed' ? 1050 : 850, () => {
+    // Safety fallback timeout matching full animation lengths
+    const attackDuration =
+      this.championType === 'Boss'
+        ? 1800
+        : this.championType === 'Zed'
+          ? 1050
+          : 850;
+    this.scene.time.delayedCall(attackDuration, () => {
       if (this.isActing && !this.isStumbling && !this.isDead) {
         this.isActing = false;
+        this.hasHitInCurrentAttack = false;
         this.startChasing();
       }
     });
@@ -638,15 +705,18 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     }
     this.isMoving = false;
     this.isActing = false;
+    this.hasHitInCurrentAttack = false;
     this.isStumbling = true;
     this.stumbleTimer = stunDuration !== undefined
       ? stunDuration
-      : (this.championType === 'Enemy3' ? 0.35 : this.championType === 'Zed' ? 0.5 : 0.75);
+      : (this.championType === 'Boss' ? 0.2 : this.championType === 'Enemy3' ? 0.35 : this.championType === 'Zed' ? 0.5 : 0.75);
     this.attackCooldown = Math.max(this.attackCooldownDuration, this.stumbleTimer + 0.2);
 
-    // Face the attacker
-    this.currentDir = this.computeDirection(fromX - this.x, fromY - this.y);
-    if (this.championType === 'Enemy3') {
+    // Face the attacker (Boss does not snap 180 degrees instantly when struck from behind)
+    if (this.championType !== 'Boss') {
+      this.currentDir = this.computeDirection(fromX - this.x, fromY - this.y);
+    }
+    if (this.championType === 'Enemy3' || this.championType === 'Boss') {
       this.currentAnimKey = 'idle';
       this.playChampionAnim('idle', this.currentDir);
     } else {
@@ -654,12 +724,13 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.playChampionAnim('get_hit', this.currentDir);
     }
 
-    // Knockback recoil away from player
+    // Knockback recoil away from player (Boss has massive poise and resists heavy knockback)
+    const effectiveKnockback = this.championType === 'Boss' ? knockbackDist * 0.25 : knockbackDist;
     const rad = Math.atan2(this.y - fromY, this.x - fromX);
-    const kx = Math.cos(rad) * knockbackDist;
-    const ky = Math.sin(rad) * knockbackDist * 0.85;
-    const rx = this.championType === 'Zed' ? 16 : 10;
-    const ry = this.championType === 'Zed' ? 8 : 5;
+    const kx = Math.cos(rad) * effectiveKnockback;
+    const ky = Math.sin(rad) * effectiveKnockback * 0.85;
+    const rx = this.championType === 'Boss' ? 24 : this.championType === 'Zed' ? 16 : 10;
+    const ry = this.championType === 'Boss' ? 12 : this.championType === 'Zed' ? 8 : 5;
 
     if (area && this.hasEnteredArena) {
       const p = area.move(this.x, this.y, kx, ky, rx, ry);
@@ -756,6 +827,29 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.clearTint();
     });
 
+    if (this.championType === 'Boss') {
+      if (this.shadow) {
+        this.scene.tweens.add({
+          targets: this.shadow,
+          alpha: 0,
+          duration: 1200,
+          ease: 'Quad.easeOut',
+        });
+      }
+      this.currentAnimKey = 'idle';
+      this.playChampionAnim('idle', this.currentDir);
+      this.scene.tweens.add({
+        targets: this,
+        alpha: 0,
+        duration: 2500,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          this.destroy();
+        },
+      });
+      return;
+    }
+
     if (this.championType === 'Enemy3') {
       if (this.shadow) {
         this.scene.tweens.add({
@@ -804,6 +898,37 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     );
   }
 
+  public isAttackInDamageWindow(): boolean {
+    if (this.isDead || this.isStumbling || this.hasHitInCurrentAttack) return false;
+    if (!this.isPerformingAttack()) return false;
+    if (!this.anims.isPlaying) return false;
+
+    const progress = this.anims.getProgress();
+
+    if (this.championType === 'Boss') {
+      // 25-frame attack:
+      // Frames 0-12 (0.00-0.48): Windup & backswing (raising axe behind head) -> 0 damage, player can dodge/escape
+      // Frames 13-18 (0.50-0.74): Active axe slam and ground impact -> damage window
+      // Frames 19-24 (0.75-1.00): Axe grounded and recovery -> 0 damage
+      return progress >= 0.50 && progress <= 0.74;
+    }
+
+    if (this.championType === 'Enemy3') {
+      if (this.enemy3State !== 'attacking') return false;
+      return progress >= 0.35 && progress <= 0.75;
+    }
+
+    // Zed & Yi: active strike is in the middle of their attack swing
+    return progress >= 0.35 && progress <= 0.75;
+  }
+
+  public getFacingAngleDeg(): number {
+    const stdDir = this.championType === 'Enemy3'
+      ? this.currentDir
+      : (this.currentDir + 6) % 8;
+    return stdDir * 45;
+  }
+
   private playChampionAnim(baseKey: string, dir: number) {
     const key = `${this.championType}_${baseKey}_${dir}`;
     if (!this.scene.anims.exists(key)) return;
@@ -816,26 +941,50 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       }
     }
 
-    const isSameBase = this.currentAnimKey === baseKey;
-    const progress = isSameBase && this.anims.isPlaying ? this.anims.getProgress() : 0;
+    if (this.anims.currentAnim?.key === key && this.anims.isPlaying) {
+      return;
+    }
 
+    // Only continuous locomotion cycle preserves cycle progress across direction changes
+    const canPreserveProgress =
+      baseKey === this.config.locomotionAnim &&
+      this.currentAnimKey === this.config.locomotionAnim &&
+      this.anims.isPlaying;
+    const progress = canPreserveProgress ? this.anims.getProgress() : 0;
+
+    this.currentAnimKey = baseKey;
     this.play(key, true);
 
-    if (isSameBase && progress > 0) {
+    if (canPreserveProgress && progress > 0) {
       this.anims.setProgress(progress);
     }
   }
 
   public getCollisionRadius(): number {
+    if (this.championType === 'Boss') return 32;
     if (this.championType === 'Enemy3') return 10;
     return this.championType === 'Zed' ? 24 : 14;
   }
 
   public pushBody(pushX: number, pushY: number, area?: WalkableArea) {
-    if (this.isDead) return;
+    if (this.isDead || this.isActing) return;
     if (this.championType === 'Enemy3' && (this.enemy3State === 'hidden' || !this.visible)) return;
-    const rx = this.championType === 'Zed' ? 16 : this.championType === 'Enemy3' ? 8 : 10;
-    const ry = this.championType === 'Zed' ? 8 : this.championType === 'Enemy3' ? 4 : 5;
+    const rx =
+      this.championType === 'Boss'
+        ? 24
+        : this.championType === 'Zed'
+          ? 16
+          : this.championType === 'Enemy3'
+            ? 8
+            : 10;
+    const ry =
+      this.championType === 'Boss'
+        ? 14
+        : this.championType === 'Zed'
+          ? 8
+          : this.championType === 'Enemy3'
+            ? 4
+            : 5;
     if (area && this.hasEnteredArena) {
       const p = area.move(this.x, this.y, pushX, pushY, rx, ry);
       this.x = p.x;
@@ -845,6 +994,40 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.y += pushY;
     }
     this.setDepth(this.getFootY());
+  }
+
+  /**
+   * Smoothly steps currentDir towards targetDir at a realistic angular turn rate.
+   * Returns true if already facing the target direction.
+   */
+  public stepDirectionTowards(targetDir: number, dt: number): boolean {
+    if (this.currentDir === targetDir) {
+      this.turnCooldown = 0;
+      return true;
+    }
+
+    if (this.turnCooldown > 0) {
+      this.turnCooldown -= dt;
+      return false;
+    }
+
+    const stepDelay =
+      this.championType === 'Boss'
+        ? 0.08
+        : this.championType === 'Zed'
+          ? 0.04
+          : 0.06;
+
+    this.turnCooldown = stepDelay;
+
+    const diff = (targetDir - this.currentDir + 8) % 8;
+    if (diff <= 4) {
+      this.currentDir = (this.currentDir + 1) % 8;
+    } else {
+      this.currentDir = (this.currentDir + 7) % 8;
+    }
+
+    return this.currentDir === targetDir;
   }
 
   // -------------------------------------------------------------
@@ -861,6 +1044,17 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     const rad = Math.atan2(dy, dx);
     let deg = Phaser.Math.RadToDeg(rad);
     if (deg < 0) deg += 360;
+
+    // Angular hysteresis: keep current direction unless angle deviates by > 28 degrees
+    const currentStd = this.championType === 'Enemy3'
+      ? this.currentDir
+      : (this.currentDir + 6) % 8;
+    const currentCenterDeg = currentStd * 45;
+    let diff = Math.abs(deg - currentCenterDeg);
+    if (diff > 180) diff = 360 - diff;
+    if (diff <= 28.0) {
+      return this.currentDir;
+    }
 
     // Standard Math.atan2 sector: 0=East, 1=SE, 2=South, 3=SW, 4=West, 5=NW, 6=North, 7=NE
     const stdDir = Math.floor(((deg + 22.5) % 360) / 45);

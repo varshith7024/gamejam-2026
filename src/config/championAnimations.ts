@@ -9,7 +9,7 @@ export interface ChampionAnimDef {
   repeat: number;
 }
 
-export type ChampionType = 'Yi' | 'Zed' | 'Enemy3';
+export type ChampionType = 'Yi' | 'Zed' | 'Enemy3' | 'Boss';
 
 export interface ChampionConfig {
   name: ChampionType;
@@ -226,5 +226,41 @@ export const ENEMY3_CONFIG: ChampionConfig = {
       repeat: 0,
     },
   ],
+};
+
+export const BOSS_DIRS = [
+  'north',
+  'ne',
+  'east',
+  'se',
+  'south',
+  'sw',
+  'west',
+  'nw',
+] as const;
+
+export const BOSS_FRAME_COUNTS: Record<string, Record<string, number>> = {
+  north: { idle: 19, walk: 25, attack: 25 },
+  ne: { idle: 25, walk: 22, attack: 25 },
+  east: { idle: 25, walk: 14, attack: 25 },
+  se: { idle: 25, walk: 21, attack: 25 },
+  south: { idle: 22, walk: 25, attack: 25 },
+  sw: { idle: 25, walk: 21, attack: 25 },
+  west: { idle: 25, walk: 14, attack: 25 },
+  nw: { idle: 25, walk: 22, attack: 25 },
+};
+
+export const BOSS_CONFIG: ChampionConfig = {
+  name: 'Boss',
+  folder: 'assets/boss_ink',
+  visualScale: 1.1, // Grand, imposing executioner
+  originX: 0.5,
+  originY: 0.87,
+  walkSpeed: 65, // Menacing, deliberate boss advance
+  locomotionAnim: 'walk',
+  actionAnims: ['attack'],
+  deathAnim: 'idle',
+  maxHp: 60,
+  animations: [],
 };
 
