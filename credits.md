@@ -26,7 +26,7 @@ https://www.youtube.com/watch?v=n451uigPWdk
 AI USAGE:
 Code was written by Antigravity + Gemini and Claude
 Maps, some ability icons were generated with AI
-Some sprite animations were generated with Spriter
+Boss sprite animations were generated with https://www.autosprite.io/
 
 todo:
 show points
