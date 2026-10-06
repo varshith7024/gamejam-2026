@@ -57,6 +57,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private shadow?: Phaser.GameObjects.Image;
   private hoverTime = Math.random() * Math.PI * 2;
 
+  // Boss specific state machine
+  public bossIsEnraged = false;
+  private bossState: 'chase' | 'sprint' | 'recovery' = 'chase';
+  private bossSprintTimer = 0;
+  private bossSprintCooldown = 3.0;
+  private bossRecoveryTimer = 0;
+  private bossTelegraphCircle?: Phaser.GameObjects.Arc;
+
   // AI & Movement State
   private isMoving = true;
   private isActing = false;
@@ -108,14 +116,14 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.maxHp = config.maxHp;
     this.currentHp = this.maxHp;
     this.attackRange =
-      type === 'Boss' ? 55 : type === 'Enemy3' ? 44 : type === 'Zed' ? 68 : 50;
+      type === 'Boss' ? 85 : type === 'Enemy3' ? 44 : type === 'Zed' ? 68 : 50;
     this.stopDistance =
-      type === 'Boss' ? 42 : type === 'Enemy3' ? 28 : type === 'Zed' ? 52 : 36;
+      type === 'Boss' ? 55 : type === 'Enemy3' ? 28 : type === 'Zed' ? 52 : 36;
     this.attackDamage =
-      type === 'Boss' ? 15 : type === 'Enemy3' ? 5 : type === 'Zed' ? 5 : 1;
+      type === 'Boss' ? 18 : type === 'Enemy3' ? 5 : type === 'Zed' ? 5 : 1;
     this.attackCooldownDuration =
-      type === 'Boss' ? 0.3 : type === 'Enemy3' ? 0.5 : type === 'Zed' ? 0.75 : 1.0;
-    this.attackCooldown = type === 'Boss' ? 0 : this.attackCooldownDuration;
+      type === 'Boss' ? 0.8 : type === 'Enemy3' ? 0.5 : type === 'Zed' ? 0.75 : 1.0;
+    this.attackCooldown = type === 'Boss' ? 0.6 : this.attackCooldownDuration;
 
     this.walkSpeed = Phaser.Math.FloatBetween(
       config.walkSpeed - 5,
@@ -136,9 +144,13 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     if (type === 'Boss') {
       this.hasEnteredArena = true;
-    }
-
-    if (type === 'Enemy3') {
+      ensureShadowTexture(scene);
+      this.shadow = scene.add.image(x, y + 2, 'character_shadow');
+      this.shadow.setOrigin(0.5, 0.5);
+      this.shadow.setScale(1.6, 1.2);
+      this.shadow.setDepth(DEPTH.groundDecal + 15);
+      this.shadow.setAlpha(0.8);
+    } else if (type === 'Enemy3') {
       // Enemy3 initially spawns at edge of map, then staggers slightly before disappearing
       this.enemy3State = 'spawning';
       this.currentAnimKey = 'idle';
@@ -160,7 +172,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     }
 
     this.attackCooldown =
-      type === 'Boss' ? 0 : Phaser.Math.FloatBetween(0.5, 2.0);
+      type === 'Boss' ? 0.6 : Phaser.Math.FloatBetween(0.5, 2.0);
 
     // If spawned on valid land, immediately mark as inside arena
     const area = (scene as any).env?.area;
@@ -202,10 +214,18 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       if (this.championType === 'Boss') {
         if (anim.key.startsWith('Boss_attack_')) {
           this.hasGroundStruck = false;
+          if (this.bossTelegraphCircle) {
+            this.bossTelegraphCircle.destroy();
+            this.bossTelegraphCircle = undefined;
+          }
           if (this.isActing && !this.isStumbling && !this.isDead) {
             this.isActing = false;
-            this.turnCooldown = 0.2; // Deliberate recovery pause before pivoting/turning
-            this.startChasing();
+            this.bossState = 'recovery';
+            this.bossRecoveryTimer = this.bossIsEnraged ? 0.45 : 0.75;
+            this.attackCooldown = this.bossIsEnraged ? 0.5 : 0.8;
+            this.turnCooldown = 0.1;
+            this.currentAnimKey = 'idle';
+            this.playChampionAnim('idle', this.currentDir);
           }
         }
         return;
@@ -434,6 +454,12 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       return;
     }
 
+    // Boss unique state machine
+    if (this.championType === 'Boss') {
+      this.updateBoss(dt, playerX, playerY, area);
+      return;
+    }
+
     // Handle stumble timer after being hit
     if (this.isStumbling) {
       this.stumbleTimer -= dt;
@@ -517,7 +543,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         this.isMoving = false;
       } else {
         const isHolding = this.currentAnimKey === 'idle';
-        const resumeWalkThreshold = this.stopDistance + (this.championType === 'Boss' ? 12 : 15);
+        const resumeWalkThreshold = this.stopDistance + 15;
         const inHoldRange = isHolding ? distToPlayer <= resumeWalkThreshold : distToPlayer <= this.stopDistance;
 
         const targetFaceDir = this.computeDirection(dx, dy);
@@ -605,9 +631,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         }
 
         // Keep facing direction smoothly turning towards target
-        const targetMoveDir = this.championType === 'Boss'
-          ? targetFaceDir
-          : this.computeDirection(vx, vy);
+        const targetMoveDir = this.computeDirection(vx, vy);
         this.stepDirectionTowards(targetMoveDir, dt);
         const animKey = `${this.championType}_${this.config.locomotionAnim}_${this.currentDir}`;
         if (this.anims.currentAnim?.key !== animKey) {
@@ -619,6 +643,219 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     // Depth sorting based on ground feet position
     this.setDepth(this.getFootY());
+  }
+
+  private updateBoss(dt: number, playerX?: number, playerY?: number, area?: WalkableArea) {
+    if (this.isDead) return;
+
+    // Check enrage threshold (<= 50% HP = 30 HP)
+    if (!this.bossIsEnraged && this.currentHp <= this.maxHp * 0.5) {
+      this.bossIsEnraged = true;
+      this.scene.events.emit('boss-enrage', this.x, this.y);
+      this.setTintFill(0xff3333);
+      this.scene.time.delayedCall(220, () => {
+        if (!this.isDead) this.clearTint();
+      });
+    }
+
+    if (this.attackCooldown > 0) {
+      this.attackCooldown -= dt;
+    }
+    if (this.bossSprintCooldown > 0) {
+      this.bossSprintCooldown -= dt;
+    }
+
+    const rx = 24;
+    const ry = 14;
+
+    if (playerX === undefined || playerY === undefined) {
+      this.setDepth(this.getFootY());
+      this.updateShadow();
+      return;
+    }
+
+    const dx = playerX - this.x;
+    const dy = playerY - this.y;
+    const distToPlayer = Math.hypot(dx, dy);
+    const targetFaceDir = this.computeDirection(dx, dy);
+
+    // If currently performing attack:
+    if (this.isActing) {
+      this.isMoving = false;
+      if (this.anims.isPlaying) {
+        const prog = this.anims.getProgress();
+        if (prog < 0.50 && this.bossTelegraphCircle) {
+          const alpha = 0.2 + (prog / 0.50) * 0.5;
+          this.bossTelegraphCircle.setAlpha(alpha);
+        } else if (prog >= 0.50 && this.bossTelegraphCircle) {
+          this.bossTelegraphCircle.destroy();
+          this.bossTelegraphCircle = undefined;
+        }
+
+        // Trigger ground strike impact at frame 13 / 50% progress
+        if (!this.hasGroundStruck && prog >= 0.50) {
+          this.hasGroundStruck = true;
+          const rad = Phaser.Math.DegToRad(this.getFacingAngleDeg());
+          const slamDist = 70;
+          const slamX = this.x + Math.cos(rad) * slamDist;
+          const slamY = this.y + Math.sin(rad) * slamDist * 0.85;
+          this.scene.events.emit('boss-ground-slam', slamX, slamY, this.x, this.y, this.bossIsEnraged);
+        }
+      }
+      this.setDepth(this.getFootY());
+      this.updateShadow();
+      return;
+    }
+
+    // State 1: Recovery after attack
+    if (this.bossState === 'recovery') {
+      this.bossRecoveryTimer -= dt;
+      this.isMoving = false;
+      this.stepDirectionTowards(targetFaceDir, dt);
+      if (this.currentAnimKey !== 'idle') {
+        this.currentAnimKey = 'idle';
+      }
+      this.playChampionAnim('idle', this.currentDir);
+
+      if (this.bossRecoveryTimer <= 0) {
+        this.bossState = 'chase';
+      }
+      this.setDepth(this.getFootY());
+      this.updateShadow();
+      return;
+    }
+
+    // State 2: Check if in striking range and ready to attack
+    const angleDiff = (targetFaceDir - this.currentDir + 8) % 8;
+    const isFacingPlayer = angleDiff === 0 || angleDiff === 1 || angleDiff === 7;
+
+    if (
+      distToPlayer <= this.attackRange &&
+      this.attackCooldown <= 0 &&
+      isFacingPlayer &&
+      (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 10))
+    ) {
+      this.triggerAttack(playerX, playerY);
+      this.setDepth(this.getFootY());
+      this.updateShadow();
+      return;
+    }
+
+    // If close enough to strike but need to pivot to face player
+    if (distToPlayer <= this.attackRange && this.attackCooldown <= 0) {
+      this.isMoving = false;
+      this.stepDirectionTowards(targetFaceDir, dt);
+      this.playChampionAnim('walk', this.currentDir);
+      this.setDepth(this.getFootY());
+      this.updateShadow();
+      return;
+    }
+
+    // State 3: Gap closer (Sprint) when player is keeping distance
+    if (
+      this.bossState === 'chase' &&
+      distToPlayer > 175 &&
+      this.bossSprintCooldown <= 0 &&
+      (!area || area.hasLineOfSight(this.x, this.y, playerX, playerY, 12))
+    ) {
+      this.bossState = 'sprint';
+      this.bossSprintTimer = this.bossIsEnraged ? 2.0 : 1.6;
+      this.bossSprintCooldown = this.bossIsEnraged ? 2.2 : 3.5;
+    }
+
+    if (this.bossState === 'sprint') {
+      this.bossSprintTimer -= dt;
+      if (this.bossSprintTimer <= 0 || distToPlayer <= this.attackRange + 15) {
+        this.bossState = 'chase';
+      }
+    }
+
+    // State 4: Movement towards target
+    this.isMoving = true;
+    this.currentAnimKey = 'walk';
+
+    let targetX = playerX;
+    let targetY = playerY;
+    if (area) {
+      const steer = area.getSteeringTarget(
+        this.x,
+        this.y,
+        playerX,
+        playerY,
+        10,
+        this.navRingDir,
+        this.navWptIdx,
+      );
+      targetX = steer.x;
+      targetY = steer.y;
+      this.navRingDir = steer.dir;
+      this.navWptIdx = steer.wptIdx;
+    }
+
+    const tdx = targetX - this.x;
+    const tdy = targetY - this.y;
+    const distToTarget = Math.hypot(tdx, tdy);
+
+    const vx = tdx / (distToTarget || 1);
+    const vy = tdy / (distToTarget || 1);
+
+    const baseSpeed = this.bossIsEnraged ? 105 : 85;
+    const sprintSpeed = this.bossIsEnraged ? 185 : 155;
+    const currentSpeed = this.bossState === 'sprint' ? sprintSpeed : baseSpeed;
+
+    const stepX = vx * currentSpeed * dt;
+    const stepY = vy * currentSpeed * dt * 0.85;
+
+    if (area) {
+      const p = area.move(this.x, this.y, stepX, stepY, rx, ry);
+      this.x = p.x;
+      this.y = p.y;
+    } else {
+      this.x += stepX;
+      this.y += stepY;
+    }
+
+    // Facing direction:
+    // Face player when close (<= 110px), otherwise face movement direction so walk anim matches motion!
+    const desiredDir = distToPlayer <= 110 ? targetFaceDir : this.computeDirection(vx, vy);
+    this.stepDirectionTowards(desiredDir, dt);
+
+    const animKey = `Boss_walk_${this.currentDir}`;
+    if (this.anims.currentAnim?.key !== animKey || !this.anims.isPlaying) {
+      this.playChampionAnim('walk', this.currentDir);
+    }
+
+    if (this.bossState === 'sprint') {
+      this.anims.timeScale = 1.35;
+      if (Math.random() < 0.25) {
+        this.spawnSprintDust();
+      }
+    } else {
+      this.anims.timeScale = 1.0;
+    }
+
+    this.setDepth(this.getFootY());
+    this.updateShadow();
+  }
+
+  private spawnSprintDust() {
+    if (!this.scene) return;
+    const dust = this.scene.add.circle(
+      this.x + Phaser.Math.Between(-10, 10),
+      this.y + Phaser.Math.Between(-4, 4),
+      Phaser.Math.Between(4, 7),
+      this.bossIsEnraged ? 0x882222 : 0xcccccc,
+      0.4,
+    );
+    dust.setDepth(DEPTH.groundDecal + 20);
+    this.scene.tweens.add({
+      targets: dust,
+      alpha: 0,
+      scale: 1.8,
+      duration: 350,
+      ease: 'Quad.easeOut',
+      onComplete: () => dust.destroy(),
+    });
   }
 
   private startChasing() {
@@ -653,6 +890,28 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.anims.setProgress(0);
     }
 
+    if (this.championType === 'Boss') {
+      const rad = Phaser.Math.DegToRad(this.getFacingAngleDeg());
+      const slamDist = 70;
+      const slamX = this.x + Math.cos(rad) * slamDist;
+      const slamY = this.y + Math.sin(rad) * slamDist * 0.85;
+      if (this.bossTelegraphCircle) {
+        this.bossTelegraphCircle.destroy();
+      }
+      this.bossTelegraphCircle = this.scene.add.circle(
+        slamX,
+        slamY,
+        34,
+        this.bossIsEnraged ? 0xff2222 : 0xffffff,
+        0.25,
+      );
+      this.bossTelegraphCircle.setStrokeStyle(2, this.bossIsEnraged ? 0xff4444 : 0xffffff, 0.6);
+      this.bossTelegraphCircle.setDepth(DEPTH.groundDecal + 40);
+      try {
+        this.scene.sound.play('triggerAttack', { volume: 0.6 });
+      } catch {}
+    }
+
     // Safety fallback timeout matching full animation lengths
     const attackDuration =
       this.championType === 'Boss'
@@ -662,10 +921,22 @@ export class Enemy extends Phaser.GameObjects.Sprite {
           : 850;
     this.scene.time.delayedCall(attackDuration, () => {
       if (this.isActing && !this.isStumbling && !this.isDead) {
+        if (this.bossTelegraphCircle) {
+          this.bossTelegraphCircle.destroy();
+          this.bossTelegraphCircle = undefined;
+        }
         this.isActing = false;
         this.hasHitInCurrentAttack = false;
         this.hasGroundStruck = false;
-        this.startChasing();
+        if (this.championType === 'Boss') {
+          this.bossState = 'recovery';
+          this.bossRecoveryTimer = this.bossIsEnraged ? 0.45 : 0.75;
+          this.attackCooldown = this.bossIsEnraged ? 0.5 : 0.8;
+          this.currentAnimKey = 'idle';
+          this.playChampionAnim('idle', this.currentDir);
+        } else {
+          this.startChasing();
+        }
       }
     });
   }
@@ -696,10 +967,18 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     if (this.championType === 'Boss') {
       // Boss has relentless poise: taking damage does NOT stun, stagger, or interrupt him
-      this.setTintFill(0xffffff);
+      this.setTintFill(this.bossIsEnraged ? 0xff4444 : 0xffffff);
       this.scene.time.delayedCall(80, () => {
         if (!this.isDead) this.clearTint();
       });
+      const rad = Math.atan2(this.y - fromY, this.x - fromX);
+      const kx = Math.cos(rad) * (knockbackDist * 0.12);
+      const ky = Math.sin(rad) * (knockbackDist * 0.12) * 0.85;
+      if (area && this.hasEnteredArena) {
+        const p = area.move(this.x, this.y, kx, ky, 24, 14);
+        this.x = p.x;
+        this.y = p.y;
+      }
       return false;
     }
 
@@ -775,11 +1054,15 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       if (this.isPerformingAttack() && !this.hasGroundStruck && this.anims.isPlaying) {
         if (this.anims.getProgress() >= 0.50) {
           this.hasGroundStruck = true;
+          if (this.bossTelegraphCircle) {
+            this.bossTelegraphCircle.destroy();
+            this.bossTelegraphCircle = undefined;
+          }
           const rad = Phaser.Math.DegToRad(this.getFacingAngleDeg());
-          const slamDist = 65;
+          const slamDist = 70;
           const slamX = this.x + Math.cos(rad) * slamDist;
           const slamY = this.y + Math.sin(rad) * slamDist * 0.85;
-          this.scene.events.emit('boss-ground-slam', slamX, slamY, this.x, this.y);
+          this.scene.events.emit('boss-ground-slam', slamX, slamY, this.x, this.y, this.bossIsEnraged);
         }
       }
     }
@@ -787,6 +1070,17 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
   private updateShadow(bob = 0) {
     if (!this.shadow) return;
+    if (this.championType === 'Boss') {
+      this.shadow.setPosition(this.x, this.y + 2);
+      const isVisible = this.visible && !this.isDead;
+      this.shadow.setVisible(isVisible);
+      if (isVisible) {
+        const pulse = this.bossIsEnraged ? 1.05 + Math.sin(Date.now() * 0.006) * 0.08 : 1.0;
+        this.shadow.setScale(1.6 * pulse, 1.2 * pulse);
+        this.shadow.setAlpha(this.alpha * (this.bossIsEnraged ? 0.9 : 0.75));
+      }
+      return;
+    }
     this.shadow.setPosition(this.x, this.y + 24);
     const isVisible = this.visible && this.enemy3State !== 'hidden' && !this.isDead;
     this.shadow.setVisible(isVisible);
@@ -814,6 +1108,10 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   public override destroy(fromScene?: boolean) {
+    if (this.bossTelegraphCircle) {
+      this.bossTelegraphCircle.destroy();
+      this.bossTelegraphCircle = undefined;
+    }
     if (this.shadow) {
       this.shadow.destroy();
       this.shadow = undefined;
@@ -827,6 +1125,10 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   public die(fromX: number, fromY: number, knockbackDist = 26) {
     if (Enemy.currentTeleporter === this) {
       Enemy.currentTeleporter = null;
+    }
+    if (this.bossTelegraphCircle) {
+      this.bossTelegraphCircle.destroy();
+      this.bossTelegraphCircle = undefined;
     }
     this.isDead = true;
     this.isDying = true;
@@ -989,7 +1291,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   }
 
   public getCollisionRadius(): number {
-    if (this.championType === 'Boss') return 16;
+    if (this.championType === 'Boss') return 28;
     if (this.championType === 'Enemy3') return 10;
     return this.championType === 'Zed' ? 24 : 14;
   }
@@ -1041,7 +1343,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     const stepDelay =
       this.championType === 'Boss'
-        ? 0.08
+        ? 0.05
         : this.championType === 'Zed'
           ? 0.04
           : 0.06;

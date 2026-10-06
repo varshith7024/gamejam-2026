@@ -306,18 +306,24 @@ export class WalkableArea {
 
     // 2. If already navigating along the ring towards a waypoint:
     if (prevDir !== 0 && currentWpt >= 0 && currentWpt < N) {
-      const dToCurr = Math.hypot(wpts[currentWpt][0] - startX, wpts[currentWpt][1] - startY);
-      if (dToCurr < 22) {
-        // Arrived at current waypoint: can this waypoint see target?
-        if (this.hasLineOfSight(wpts[currentWpt][0], wpts[currentWpt][1], targetX, targetY, 8)) {
-          return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
+      if (!this.hasLineOfSight(startX, startY, wpts[currentWpt][0], wpts[currentWpt][1], 8)) {
+        // Can't see current waypoint: reset to find best visible entry waypoint
+        currentWpt = -1;
+        prevDir = 0;
+      } else {
+        const dToCurr = Math.hypot(wpts[currentWpt][0] - startX, wpts[currentWpt][1] - startY);
+        if (dToCurr < 22) {
+          // Arrived at current waypoint: can this waypoint see target?
+          if (this.hasLineOfSight(wpts[currentWpt][0], wpts[currentWpt][1], targetX, targetY, 8)) {
+            return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
+          }
+          // Advance to next waypoint along the chosen direction
+          const nextWpt = (currentWpt + prevDir + N) % N;
+          return { x: wpts[nextWpt][0], y: wpts[nextWpt][1], dir: prevDir, wptIdx: nextWpt };
         }
-        // Advance to next waypoint along the chosen direction
-        const nextWpt = (currentWpt + prevDir + N) % N;
-        return { x: wpts[nextWpt][0], y: wpts[nextWpt][1], dir: prevDir, wptIdx: nextWpt };
+        // Keep moving towards current waypoint
+        return { x: wpts[currentWpt][0], y: wpts[currentWpt][1], dir: prevDir, wptIdx: currentWpt };
       }
-      // Keep moving towards current waypoint
-      return { x: wpts[currentWpt][0], y: wpts[currentWpt][1], dir: prevDir, wptIdx: currentWpt };
     }
 
     // 3. New obstacle encounter: find best entry, exit, and direction

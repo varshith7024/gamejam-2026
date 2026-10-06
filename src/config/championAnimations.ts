@@ -256,7 +256,7 @@ export const BOSS_CONFIG: ChampionConfig = {
   visualScale: 1.1, // Grand, imposing executioner
   originX: 0.5,
   originY: 0.87,
-  walkSpeed: 65, // Menacing, deliberate boss advance
+  walkSpeed: 85, // Menacing, deliberate boss advance
   locomotionAnim: 'walk',
   actionAnims: ['attack'],
   deathAnim: 'idle',

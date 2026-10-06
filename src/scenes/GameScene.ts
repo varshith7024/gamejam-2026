@@ -404,23 +404,101 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Boss ground strike impact handler (Level 3 Abyss)
-    this.events.on('boss-ground-slam', (slamX: number, slamY: number) => {
-      this.cameras.main.shake(220, 0.011);
-      const ring = this.add.circle(slamX, slamY, 16, 0xffffff, 0.45);
+    this.events.on('boss-ground-slam', (slamX: number, slamY: number, bossX: number, bossY: number, isEnraged: boolean) => {
+      const shakeDur = isEnraged ? 280 : 220;
+      const shakeMag = isEnraged ? 0.015 : 0.011;
+      this.cameras.main.shake(shakeDur, shakeMag);
+      try {
+        this.sound.play('triggerOverhead', { volume: 0.85 });
+        this.sound.play('triggerShockwave', { volume: 0.70 });
+      } catch {}
+
+      // Visual ground impact flash / cracks
+      const ringRadius = isEnraged ? 125 : 95;
+      const ringColor = isEnraged ? 0xff3333 : 0xffffff;
+
+      const ring = this.add.circle(slamX, slamY, 18, ringColor, 0.5);
       ring.setDepth(DEPTH.groundDecal + 50);
-      ring.setStrokeStyle(3, 0xffffff, 0.85);
+      ring.setStrokeStyle(3.5, ringColor, 0.9);
       this.tweens.add({
         targets: ring,
-        radius: 95,
+        radius: ringRadius,
         alpha: 0,
-        duration: 400,
+        duration: 450,
         ease: 'Cubic.easeOut',
         onComplete: () => ring.destroy(),
+      });
+
+      // Secondary shockwave if enraged
+      if (isEnraged) {
+        const ring2 = this.add.circle(slamX, slamY, 10, 0xff8888, 0.6);
+        ring2.setDepth(DEPTH.groundDecal + 49);
+        ring2.setStrokeStyle(2, 0xff4444, 0.8);
+        this.tweens.add({
+          targets: ring2,
+          radius: 150,
+          alpha: 0,
+          duration: 550,
+          ease: 'Sine.easeOut',
+          onComplete: () => ring2.destroy(),
+        });
+      }
+
+      // Shockwave threat: check distance to player
+      const distToSlam = Phaser.Math.Distance.Between(this.player.x, this.player.y, slamX, slamY);
+      if (distToSlam <= ringRadius && !this.isDead) {
+        // Dodging (roll/flip/slide) gives i-frames
+        const isDodging = this.currentAction === 'roll' || this.currentAction === 'flip' || this.currentAction === 'slide';
+        if (isDodging) {
+          return;
+        }
+
+        // Blocking: deflect shockwave
+        if (this.currentAction === 'block') {
+          const rad = Math.atan2(this.player.y - slamY, this.player.x - slamX);
+          this.movePlayer(Math.cos(rad) * 22, Math.sin(rad) * 22);
+          try {
+            this.sound.play('checkPlayerAttackHit', { volume: 0.6 });
+          } catch {}
+          return;
+        }
+
+        // Hit by shockwave!
+        const dmg = isEnraged ? 12 : 8;
+        this.damagePlayer(dmg);
+        this.flashPlayerHurt();
+        const rad = Math.atan2(this.player.y - slamY, this.player.x - slamX);
+        this.movePlayer(Math.cos(rad) * 28, Math.sin(rad) * 28);
+      }
+    });
+
+    // Boss enrage event handler (Level 3 Abyss)
+    this.events.on('boss-enrage', (bx: number, by: number) => {
+      this.cameras.main.shake(400, 0.018);
+      this.cameras.main.flash(200, 200, 30, 30);
+      try {
+        this.sound.play('triggerPummel', { volume: 0.9 });
+        this.sound.play('waveStart', { volume: 0.8 });
+      } catch {}
+      this.announceWave('ENRAGED');
+
+      // Crimson explosion shockwave
+      const blast = this.add.circle(bx, by, 20, 0xff2222, 0.7);
+      blast.setDepth(DEPTH.groundDecal + 60);
+      blast.setStrokeStyle(4, 0xff4444, 1.0);
+      this.tweens.add({
+        targets: blast,
+        radius: 180,
+        alpha: 0,
+        duration: 600,
+        ease: 'Cubic.easeOut',
+        onComplete: () => blast.destroy(),
       });
     });
 
     this.events.once('shutdown', () => {
       this.events.off('boss-ground-slam');
+      this.events.off('boss-enrage');
     });
 
     // Debug mode (?debug in URL)
@@ -2848,7 +2926,7 @@ export class GameScene extends Phaser.Scene {
         if (enemy.isDead) continue;
         const dx = enemy.x - orb.sprite.x;
         const dy = (enemy.y - orbGroundY) / 0.85;
-        const enemyHitbox = enemy.championType === 'Boss' ? 17 : enemy.championType === 'Zed' ? 20 : enemy.championType === 'Enemy3' ? 8 : 12;
+        const enemyHitbox = enemy.championType === 'Boss' ? 36 : enemy.championType === 'Zed' ? 20 : enemy.championType === 'Enemy3' ? 8 : 12;
         if (Math.hypot(dx, dy) <= orbRadius + enemyHitbox) {
           hitEnemies.push(enemy);
         }
@@ -2862,7 +2940,7 @@ export class GameScene extends Phaser.Scene {
           if (enemy.isDead || damageTargets.has(enemy)) continue;
           const dx = enemy.x - orb.sprite.x;
           const dy = (enemy.y - orbGroundY) / 0.85;
-          const enemyHitbox = enemy.championType === 'Boss' ? 17 : enemy.championType === 'Zed' ? 20 : enemy.championType === 'Enemy3' ? 8 : 12;
+          const enemyHitbox = enemy.championType === 'Boss' ? 36 : enemy.championType === 'Zed' ? 20 : enemy.championType === 'Enemy3' ? 8 : 12;
           if (Math.hypot(dx, dy) <= splashRadius + enemyHitbox) {
             damageTargets.add(enemy);
           }
@@ -3202,7 +3280,7 @@ export class GameScene extends Phaser.Scene {
         const dist = Math.hypot(dx, dy);
 
         // Enemy is hit when the expanding thick ring sweeps over them
-        const hitRadius = enemy.championType === 'Boss' ? 17 : 15;
+        const hitRadius = enemy.championType === 'Boss' ? 36 : 15;
         if (dist <= ring.radius + hitRadius && dist >= ring.radius - 28 - hitRadius) {
           ring.hitEnemies.add(enemy);
           if (this.time.now - this.lastShockwaveHitTime > 120) {
@@ -3491,8 +3569,8 @@ export class GameScene extends Phaser.Scene {
       const dy = enemy.y - this.player.y;
       const dist = Math.hypot(dx, dy);
 
-      // Boss hitbox reduced by another 50% (17px radius), Zed is 22px, normal minion is 14px
-      const enemyHitRadius = enemy.championType === 'Boss' ? 17 : enemy.championType === 'Zed' ? 22 : 14;
+      // Boss is a massive executioner (38px hit radius), Zed is 22px, normal minion is 14px
+      const enemyHitRadius = enemy.championType === 'Boss' ? 38 : enemy.championType === 'Zed' ? 22 : 14;
 
       // Player melee attack range: check distance against enemy's outer hit radius
       const effectiveDist = Math.max(0, dist - enemyHitRadius);
@@ -3678,7 +3756,7 @@ export class GameScene extends Phaser.Scene {
       if (enemy.isDead || enemy.isStumbling || !enemy.isAttackInDamageWindow()) continue;
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-      const maxHitDist = enemy.championType === 'Boss' ? 55 : (enemy.championType === 'Enemy3' ? 55 : 75);
+      const maxHitDist = enemy.championType === 'Boss' ? 90 : (enemy.championType === 'Enemy3' ? 55 : 75);
       if (dist > maxHitDist) continue;
 
       // Frontal cone check: attacks only hit within 190° forward arc of the attacker.

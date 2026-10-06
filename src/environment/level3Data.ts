@@ -140,12 +140,12 @@ export const LEVEL3: LevelData = {
   navWaypoints: [
     p(790, 380),  // North clearance
     p(980, 390),  // NE clearance around East brazier
+    p(1140, 520), // East terrace clearance
     p(980, 550),  // SE clearance around East brazier
     p(790, 580),  // South clearance
     p(600, 550),  // SW clearance around West brazier
-    p(600, 390),  // NW clearance around West brazier
     p(440, 520),  // West terrace clearance
-    p(1140, 520), // East terrace clearance
+    p(600, 390),  // NW clearance around West brazier
   ].map((pt) => [pt.x, pt.y] as Pt),
 
   // Spawn locations at the gateways and stairs around the abyss arena

@@ -102,6 +102,29 @@ export const LEVEL1: LevelData = {
   }[],
 
   /**
+   * Navigation clearance waypoints around props (pillars, ruins, brazier, pedestal).
+   * Enemies smoothly navigate around props instead of getting caught behind them.
+   * Rendered as yellow lines & circles in debug overlay (press G).
+   */
+  navWaypoints: [
+    [830, 290], // 0: North central clearance
+    [960, 280], // 1: NW clearance around small statue
+    [1030, 260], // 2: North clearance around small statue
+    [1120, 340], // 3: East clearance around small statue
+    [1180, 420], // 4: SW clearance around broken pillar
+    [1120, 530], // 5: NE clearance around pedestal block
+    [1060, 630], // 6: SE clearance around pedestal block
+    [960, 650], // 7: NE clearance around brazier ruin
+    [830, 670], // 8: South central / West clearance around brazier ruin
+    [670, 630], // 9: SW open floor clearance
+    [540, 560], // 10: SE clearance around tall pillar
+    [420, 510], // 11: West clearance around tall pillar
+    [480, 440], // 12: North clearance around tall pillar
+    [560, 400], // 13: South clearance around ruin pile
+    [710, 370], // 14: East clearance around ruin pile
+  ] as Pt[],
+
+  /**
    * Monster entry routes: the stairways, doorways and stone paths leading into the arena.
    * Enemies appear on these solid elevated pathways (outside the player's boundary) and advance into the arena.
    */
