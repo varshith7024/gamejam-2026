@@ -302,6 +302,51 @@ export class GameScene extends Phaser.Scene {
     // Start Wave Progression
     this.startWave(1);
 
+    // Boss ground strike impact handler (Level 3 Abyss)
+    this.events.on('boss-ground-slam', (slamX: number, slamY: number) => {
+      // Big camera shake when the Boss's heavy weapon hits the ground
+      this.cameras.main.shake(220, 0.011);
+
+      // Expanding floor shockwave ring
+      const ring = this.add.circle(slamX, slamY, 16, 0xffffff, 0.45);
+      ring.setDepth(DEPTH.groundDecal + 50);
+      ring.setStrokeStyle(3, 0x88ccff, 0.85);
+      this.tweens.add({
+        targets: ring,
+        radius: 95,
+        alpha: 0,
+        duration: 400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy(),
+      });
+
+      // Dust / rock spark fragments
+      if (this.textures.exists('fx_dot')) {
+        for (let i = 0; i < 8; i++) {
+          const ang = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          const dist = Phaser.Math.FloatBetween(40, 110);
+          const spark = this.add.image(slamX, slamY, 'fx_dot');
+          spark.setTint(0xb0c4de);
+          spark.setScale(Phaser.Math.FloatBetween(0.3, 0.55));
+          spark.setDepth(DEPTH.groundDecal + 52);
+          this.tweens.add({
+            targets: spark,
+            x: slamX + Math.cos(ang) * dist * 0.45,
+            y: slamY + Math.sin(ang) * dist * 0.35,
+            alpha: 0,
+            scale: 0.1,
+            duration: 340,
+            ease: 'Quad.easeOut',
+            onComplete: () => spark.destroy(),
+          });
+        }
+      }
+    });
+
+    this.events.once('shutdown', () => {
+      this.events.off('boss-ground-slam');
+    });
+
     // Debug mode (?debug in URL)
     if (new URLSearchParams(window.location.search).has('debug')) {
       this.debugOn = true;
@@ -374,7 +419,7 @@ export class GameScene extends Phaser.Scene {
     // Decrease light level by 1% (0.01) per second when enemies are present
     const hasAliveEnemies = this.enemies.some((e) => !e.isDead);
     if (hasAliveEnemies) {
-      this.blackPoint = Math.max(-0.50, this.blackPoint - 0.01 * dt);
+      this.blackPoint = Math.max(-0.5, this.blackPoint - 0.01 * dt);
     }
     this.blackPoint = Math.min(0.35, this.blackPoint);
     this.applyBlackPoint();
@@ -396,7 +441,10 @@ export class GameScene extends Phaser.Scene {
 
     // Anchor at bottom-left
     this.healthContainer = this.add.container(toCamX(30), toCamY(height - 36));
-    this.healthContainer.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
+    this.healthContainer
+      .setScale(1 / z)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 10);
 
     // Outer black bar
     this.hpBgGfx = this.add.graphics();
@@ -439,6 +487,10 @@ export class GameScene extends Phaser.Scene {
     this.health = Math.max(0, this.health - amount);
     this.timeSinceLastDamage = 0;
     this.drawHealthBar();
+
+    if (this.level.id === 'level3') {
+      this.cameras.main.shake(180, 0.009);
+    }
 
     if (this.health <= 0) {
       this.die();
@@ -501,7 +553,7 @@ export class GameScene extends Phaser.Scene {
 
     // Corner wave indicator (top-left) - wide cinematic typography matching The Veil
     this.cornerWaveText = this.add
-      .text(toCamX(32), toCamY(28), 'WAVE I', {
+      .text(toCamX(32), toCamY(28), this.level.id === 'level3' ? 'BOSS' : 'WAVE I', {
         fontFamily: 'Georgia, serif',
         fontSize: '18px',
         color: '#ece8f4',
@@ -557,7 +609,10 @@ export class GameScene extends Phaser.Scene {
     const panelW = 216;
     const panelH = 204;
     this.cooldownContainer = this.add.container(toCamX(width - panelW - 20), toCamY(20));
-    this.cooldownContainer.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
+    this.cooldownContainer
+      .setScale(1 / z)
+      .setScrollFactor(0)
+      .setDepth(DEPTH.screen + 10);
 
     // Subtle dark translucent background panel with rounded border
     const bgGfx = this.add.graphics();
@@ -754,7 +809,9 @@ export class GameScene extends Phaser.Scene {
       let best = entries[0];
       let bestDiff = Infinity;
       for (const e of entries) {
-        const diff = Math.abs(Phaser.Math.Angle.Wrap(Math.atan2(e.y - fc.y, e.x - fc.x) - angleRad));
+        const diff = Math.abs(
+          Phaser.Math.Angle.Wrap(Math.atan2(e.y - fc.y, e.x - fc.x) - angleRad),
+        );
         if (diff < bestDiff) {
           bestDiff = diff;
           best = e;
@@ -769,8 +826,16 @@ export class GameScene extends Phaser.Scene {
       const perpAngle = angleFromCenter + Math.PI / 2;
       const perpOffset = Math.sign(offsetDist) * Math.min(4, Math.abs(offsetDist) * 0.08);
 
-      x = best.x + Math.cos(angleFromCenter) * depthOffset + Math.cos(perpAngle) * perpOffset + Phaser.Math.Between(-2, 2);
-      y = best.y + Math.sin(angleFromCenter) * depthOffset + Math.sin(perpAngle) * perpOffset + Phaser.Math.Between(-2, 2);
+      x =
+        best.x +
+        Math.cos(angleFromCenter) * depthOffset +
+        Math.cos(perpAngle) * perpOffset +
+        Phaser.Math.Between(-2, 2);
+      y =
+        best.y +
+        Math.sin(angleFromCenter) * depthOffset +
+        Math.sin(perpAngle) * perpOffset +
+        Phaser.Math.Between(-2, 2);
     } else {
       // Default (Level 1): a ring around the floor centre
       // For Enemy3 in Level 1, spawn near the visible perimeter of the arena so player sees him appear and disappear
@@ -798,7 +863,7 @@ export class GameScene extends Phaser.Scene {
     const waveRoman = romanNums[waveNum] || `${waveNum}`;
 
     if (this.cornerWaveText) {
-      this.cornerWaveText.setText(`WAVE ${waveRoman}`);
+      this.cornerWaveText.setText(this.level.id === 'level3' ? 'BOSS' : `WAVE ${waveRoman}`);
     }
 
     if (waveNum === 1) {
@@ -869,8 +934,16 @@ export class GameScene extends Phaser.Scene {
     const t = this.time.delayedCall(6000, () => {
       this.wavePendingSpawns -= 6;
       for (let k = 0; k < 3; k++) {
-        this.spawnEnemyAtAngle(this.level.roster.light, Math.PI * 0.75 + angleDeltas[k], offsets[k]);
-        this.spawnEnemyAtAngle(this.level.roster.light, Math.PI * 1.75 + angleDeltas[k], offsets[k]);
+        this.spawnEnemyAtAngle(
+          this.level.roster.light,
+          Math.PI * 0.75 + angleDeltas[k],
+          offsets[k],
+        );
+        this.spawnEnemyAtAngle(
+          this.level.roster.light,
+          Math.PI * 1.75 + angleDeltas[k],
+          offsets[k],
+        );
       }
     });
     this.waveTimerEvents.push(t);
@@ -979,7 +1052,7 @@ export class GameScene extends Phaser.Scene {
 
       const sideSpirit = this.add
         .image(x + 6, y - 12, spiritsKey)
-        .setScale(0.10)
+        .setScale(0.1)
         .setTint(0xc084fc) // Light violet
         .setAlpha(0.55)
         .setBlendMode(Phaser.BlendModes.ADD)
@@ -989,8 +1062,8 @@ export class GameScene extends Phaser.Scene {
         targets: sideSpirit,
         x: x + Phaser.Math.Between(-12, 12),
         y: y - 42,
-        scaleX: 0.20,
-        scaleY: 0.20,
+        scaleX: 0.2,
+        scaleY: 0.2,
         alpha: 0,
         duration: 1350,
         delay: 80,
@@ -1106,7 +1179,7 @@ export class GameScene extends Phaser.Scene {
 
     // Slot 0 is base Y above POINTS text (height - 76); higher slots stack upward
     const slotIndex = this.killPopups.length;
-    const screenY = (height - 76) - slotIndex * 22;
+    const screenY = height - 76 - slotIndex * 22;
 
     const popupText = this.add
       .text(toCamX(width - 32), toCamY(screenY), `+${points}`, {
@@ -1165,7 +1238,7 @@ export class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < this.killPopups.length; i++) {
       const p = this.killPopups[i];
-      const targetScreenY = (height - 76) - i * 22;
+      const targetScreenY = height - 76 - i * 22;
       const targetWorldY = toCamY(targetScreenY);
 
       if (p.slideTween) {
@@ -1183,7 +1256,11 @@ export class GameScene extends Phaser.Scene {
   private checkWaveProgress() {
     if (this.level.id === 'level3') {
       const activeInGroup = this.waveGroupEnemies.filter((e) => !e.isDead);
-      if (this.wavePendingSpawns === 0 && activeInGroup.length === 0 && this.waveGroupEnemies.length > 0) {
+      if (
+        this.wavePendingSpawns === 0 &&
+        activeInGroup.length === 0 &&
+        this.waveGroupEnemies.length > 0
+      ) {
         if (this.wavePhase === 0) {
           this.wavePhase = 1;
           if (this.cornerWaveText) {
@@ -1523,7 +1600,14 @@ export class GameScene extends Phaser.Scene {
 
     // 2. Update all enemies pursuing the player in the arena
     for (const enemy of this.enemies) {
-      enemy.update(dt, this.player.x, this.player.y, this.env.area, this.currentAimDir, this.enemies);
+      enemy.update(
+        dt,
+        this.player.x,
+        this.player.y,
+        this.env.area,
+        this.currentAimDir,
+        this.enemies,
+      );
     }
 
     // 3. Resolve physical collisions between enemies and with player (small overlap allowed)
@@ -1606,7 +1690,11 @@ export class GameScene extends Phaser.Scene {
 
     // X - Light Orb (thrown projectile, unlocked every 1500 pts, 5s cd)
     if (Phaser.Input.Keyboard.JustDown(this.keyX)) {
-      if (this.canTriggerSpecialAction() && this.pointsTowardsX >= this.REQ_POINTS_X && this.cooldownX <= 0) {
+      if (
+        this.canTriggerSpecialAction() &&
+        this.pointsTowardsX >= this.REQ_POINTS_X &&
+        this.cooldownX <= 0
+      ) {
         this.triggerLightOrb();
       }
       return;
@@ -1621,7 +1709,11 @@ export class GameScene extends Phaser.Scene {
 
     // U - Concentric Shockwaves (unlocked every 10000 pts, 10s cd)
     if (Phaser.Input.Keyboard.JustDown(this.keyU)) {
-      if (this.canTriggerSpecialAction() && this.pointsTowardsU >= this.REQ_POINTS_U && this.cooldownU <= 0) {
+      if (
+        this.canTriggerSpecialAction() &&
+        this.pointsTowardsU >= this.REQ_POINTS_U &&
+        this.cooldownU <= 0
+      ) {
         this.triggerShockwave();
       }
       return;
@@ -1759,7 +1851,8 @@ export class GameScene extends Phaser.Scene {
         if (enemy.isDead) continue;
         const dx = enemy.x - orb.sprite.x;
         const dy = (enemy.y - orbGroundY) / 0.85;
-        const enemyHitbox = enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
+        const enemyHitbox =
+          enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
         if (Math.hypot(dx, dy) <= orbRadius + enemyHitbox) {
           hitEnemies.push(enemy);
         }
@@ -1773,7 +1866,8 @@ export class GameScene extends Phaser.Scene {
           if (enemy.isDead || damageTargets.has(enemy)) continue;
           const dx = enemy.x - orb.sprite.x;
           const dy = (enemy.y - orbGroundY) / 0.85;
-          const enemyHitbox = enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
+          const enemyHitbox =
+            enemy.championType === 'Zed' ? 14 : enemy.championType === 'Enemy3' ? 7 : 10;
           if (Math.hypot(dx, dy) <= splashRadius + enemyHitbox) {
             damageTargets.add(enemy);
           }
@@ -1781,14 +1875,7 @@ export class GameScene extends Phaser.Scene {
 
         let hasKills = false;
         for (const enemy of damageTargets) {
-          const killed = enemy.takeDamage(
-            orb.sprite.x,
-            orb.sprite.y,
-            this.env.area,
-            10,
-            50,
-            0.8,
-          );
+          const killed = enemy.takeDamage(orb.sprite.x, orb.sprite.y, this.env.area, 10, 50, 0.8);
           if (killed) {
             hasKills = true;
             this.onEnemyDefeated(enemy, 'X');
@@ -1804,7 +1891,9 @@ export class GameScene extends Phaser.Scene {
 
       // Check bound collision after minimum flight distance (to clear initial cast footprint)
       if (orb.distTraveled >= 35) {
-        const isOutOfWalkable = this.env?.area ? !this.env.area.contains(orb.sprite.x, orb.sprite.y) : false;
+        const isOutOfWalkable = this.env?.area
+          ? !this.env.area.contains(orb.sprite.x, orb.sprite.y)
+          : false;
         const isOutOfBounds =
           orb.sprite.x < 15 ||
           orb.sprite.x > this.level.world.width - 15 ||
@@ -2019,7 +2108,8 @@ export class GameScene extends Phaser.Scene {
       if (yRel > ryOut) continue;
 
       const xOut = rOut * Math.sqrt(Math.max(0, 1.0 - (yRel / ryOut) ** 2));
-      const xIn = yRel < ryIn && ryIn > 0 ? rIn * Math.sqrt(Math.max(0, 1.0 - (yRel / ryIn) ** 2)) : 0;
+      const xIn =
+        yRel < ryIn && ryIn > 0 ? rIn * Math.sqrt(Math.max(0, 1.0 - (yRel / ryIn) ** 2)) : 0;
 
       const qxOut = Math.round(xOut / pSize) * pSize;
       const qxIn = Math.round(xIn / pSize) * pSize;
@@ -2096,10 +2186,28 @@ export class GameScene extends Phaser.Scene {
       const alpha = lifeFrac > 0.85 ? (1 - lifeFrac) / 0.15 : 1.0;
 
       // 1. Outer radiant blue aura border (26px thick, 3px pixel block grid)
-      this.drawPixelEllipse(ring.gfx, ring.centerX, ring.centerY, ring.radius, 26, 3, 0x3b82f6, 0.72 * alpha);
+      this.drawPixelEllipse(
+        ring.gfx,
+        ring.centerX,
+        ring.centerY,
+        ring.radius,
+        26,
+        3,
+        0x3b82f6,
+        0.72 * alpha,
+      );
 
       // 2. Inner brilliant white energy core (14px thick, 3px pixel block grid)
-      this.drawPixelEllipse(ring.gfx, ring.centerX, ring.centerY, ring.radius, 14, 3, 0xffffff, 0.98 * alpha);
+      this.drawPixelEllipse(
+        ring.gfx,
+        ring.centerX,
+        ring.centerY,
+        ring.radius,
+        14,
+        3,
+        0xffffff,
+        0.98 * alpha,
+      );
 
       // Check collision with alive enemies (2:1 isometric ground perspective)
       // Every circle deals 5 damage to monsters as the shockwave reaches them
@@ -2113,14 +2221,7 @@ export class GameScene extends Phaser.Scene {
         // Enemy is hit when the expanding thick ring sweeps over them
         if (dist <= ring.radius + 15 && dist >= ring.radius - 28) {
           ring.hitEnemies.add(enemy);
-          const killed = enemy.takeDamage(
-            ring.centerX,
-            ring.centerY,
-            this.env.area,
-            5,
-            34,
-            0.5,
-          );
+          const killed = enemy.takeDamage(ring.centerX, ring.centerY, this.env.area, 5, 34, 0.5);
           if (killed) {
             hasKills = true;
             this.onEnemyDefeated(enemy, 'U');
@@ -2326,7 +2427,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Darken environment
-    this.blackPoint = -0.50;
+    this.blackPoint = -0.5;
     this.applyBlackPoint();
 
     this.time.delayedCall(400, () => {
@@ -2363,7 +2464,10 @@ export class GameScene extends Phaser.Scene {
       if (dist > profile.reach) continue;
 
       // Cannot hit enemies through solid walls/blockers (e.g. through the central altar)
-      if (this.env.area && !this.env.area.hasLineOfSight(this.player.x, this.player.y, enemy.x, enemy.y, 8)) {
+      if (
+        this.env.area &&
+        !this.env.area.hasLineOfSight(this.player.x, this.player.y, enemy.x, enemy.y, 8)
+      ) {
         continue;
       }
 
@@ -2387,7 +2491,10 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (isHit) {
-        const dmg = enemy.championType === 'Zed' || enemy.championType === 'Boss' ? profile.damageZed : profile.damageYi;
+        const dmg =
+          enemy.championType === 'Zed' || enemy.championType === 'Boss'
+            ? profile.damageZed
+            : profile.damageYi;
         const killed = enemy.takeDamage(
           this.player.x,
           this.player.y,
@@ -2481,7 +2588,7 @@ export class GameScene extends Phaser.Scene {
       let dy = (e.y - this.player.y) / 0.8;
       let dist = Math.hypot(dx, dy);
 
-      const targetMinDist = (playerRadius + e.getCollisionRadius()) * 0.90;
+      const targetMinDist = (playerRadius + e.getCollisionRadius()) * 0.9;
 
       if (dist < targetMinDist) {
         if (dist < 0.001) {
@@ -2534,7 +2641,8 @@ export class GameScene extends Phaser.Scene {
       if (enemy.isDead || enemy.isStumbling || !enemy.isAttackInDamageWindow()) continue;
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
-      const maxHitDist = enemy.championType === 'Boss' ? 120 : (enemy.championType === 'Enemy3' ? 55 : 75);
+      const maxHitDist =
+        enemy.championType === 'Boss' ? 120 : enemy.championType === 'Enemy3' ? 55 : 75;
       if (dist > maxHitDist) continue;
 
       // Frontal cone check: attacks only hit within 190° forward arc of the attacker.
@@ -2572,9 +2680,10 @@ export class GameScene extends Phaser.Scene {
       enemy.resetAttackCooldown();
       this.flashPlayerHurt();
       if (enemy.championType === 'Boss') {
-        this.cameras.main.shake(140, 0.007);
+        this.cameras.main.shake(220, 0.014);
       }
-      this.enemyHitCooldown = enemy.championType === 'Boss' ? 0.6 : (enemy.championType === 'Zed' ? 0.35 : 0.5);
+      this.enemyHitCooldown =
+        enemy.championType === 'Boss' ? 0.6 : enemy.championType === 'Zed' ? 0.35 : 0.5;
       return;
     }
   }
@@ -2681,19 +2790,12 @@ export class GameScene extends Phaser.Scene {
           ? this.RUN_SPEED
           : this.WALK_SPEED;
 
-      this.movePlayer(
-        moveInput.x * speed * dt,
-        moveInput.y * speed * dt * 0.85,
-      );
+      this.movePlayer(moveInput.x * speed * dt, moveInput.y * speed * dt * 0.85);
 
       // Sprite aims whichever way it moves (8 directions)
       this.currentAimDir = this.computeMoveDirection(moveInput.x, moveInput.y);
 
-      const targetAnim = isCrouching
-        ? 'CrouchRun'
-        : isSprinting
-          ? 'Run'
-          : 'Walk';
+      const targetAnim = isCrouching ? 'CrouchRun' : isSprinting ? 'Run' : 'Walk';
 
       this.playDirectional(targetAnim, this.currentAimDir, true);
     } else {

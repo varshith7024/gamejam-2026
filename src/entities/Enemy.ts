@@ -61,6 +61,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   private isMoving = true;
   private isActing = false;
   public hasHitInCurrentAttack = false;
+  public hasGroundStruck = false;
 
   // Clockwise 8 directions: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW (for Yi/Zed), or stdDir 0..7 (for Enemy3)
   private currentDir = 4; // Starts facing South
@@ -200,6 +201,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       }
       if (this.championType === 'Boss') {
         if (anim.key.startsWith('Boss_attack_')) {
+          this.hasGroundStruck = false;
           if (this.isActing && !this.isStumbling && !this.isDead) {
             this.isActing = false;
             this.turnCooldown = 0.2; // Deliberate recovery pause before pivoting/turning
@@ -624,6 +626,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.isActing = false;
     this.isStumbling = false;
     this.hasHitInCurrentAttack = false;
+    this.hasGroundStruck = false;
     this.currentAnimKey = this.config.locomotionAnim;
     this.playChampionAnim(this.config.locomotionAnim, this.currentDir);
   }
@@ -632,6 +635,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.isMoving = false;
     this.isActing = true;
     this.hasHitInCurrentAttack = false;
+    this.hasGroundStruck = false;
     this.attackCooldown = this.attackCooldownDuration;
 
     // Direct line to player for final attack alignment (only called when already roughly facing target)
@@ -660,6 +664,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       if (this.isActing && !this.isStumbling && !this.isDead) {
         this.isActing = false;
         this.hasHitInCurrentAttack = false;
+        this.hasGroundStruck = false;
         this.startChasing();
       }
     });
@@ -706,6 +711,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.isMoving = false;
     this.isActing = false;
     this.hasHitInCurrentAttack = false;
+    this.hasGroundStruck = false;
     this.isStumbling = true;
     this.stumbleTimer = stunDuration !== undefined
       ? stunDuration
@@ -756,6 +762,18 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.displayOriginY = this.height * this.config.originY + 20 + bob;
       this.updateShadow(bob);
     }
+    if (this.championType === 'Boss' && !this.isDead) {
+      if (this.isPerformingAttack() && !this.hasGroundStruck && this.anims.isPlaying) {
+        if (this.anims.getProgress() >= 0.50) {
+          this.hasGroundStruck = true;
+          const rad = Phaser.Math.DegToRad(this.getFacingAngleDeg());
+          const slamDist = 65;
+          const slamX = this.x + Math.cos(rad) * slamDist;
+          const slamY = this.y + Math.sin(rad) * slamDist * 0.85;
+          this.scene.events.emit('boss-ground-slam', slamX, slamY, this.x, this.y);
+        }
+      }
+    }
   }
 
   private updateShadow(bob = 0) {
@@ -805,6 +823,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.isDying = true;
     this.isMoving = false;
     this.isActing = false;
+    this.hasGroundStruck = false;
     this.isStumbling = false;
 
     // Face the attacker on final blow

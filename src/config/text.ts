@@ -8,4 +8,6 @@ export const TEXT = {
   level1Subtitle: 'Visual prototype',
   level2Title: 'THE CONDUIT',
   level2Subtitle: 'Where the light is drawn',
+  level3Title: 'THE ABYSS',
+  level3Subtitle: 'The Heart of Darkness',
 };

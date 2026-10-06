@@ -13,9 +13,18 @@ import { TEXT } from '../config/text';
  * and converted to world pixels by `S`/`p`/`poly`. Keep S in sync with WORLD_SCALE in the python tool.
  */
 const S = 1.2;
-const p = (x: number, y: number): { x: number; y: number } => ({ x: Math.round(x * S), y: Math.round(y * S) });
-const poly = (pts: [number, number][]): Pt[] => pts.map(([x, y]) => [Math.round(x * S), Math.round(y * S)] as Pt);
-const ellipse = (cx: number, cy: number, rx: number, ry: number): [number, number, number, number] => [
+const p = (x: number, y: number): { x: number; y: number } => ({
+  x: Math.round(x * S),
+  y: Math.round(y * S),
+});
+const poly = (pts: [number, number][]): Pt[] =>
+  pts.map(([x, y]) => [Math.round(x * S), Math.round(y * S)] as Pt);
+const ellipse = (
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+): [number, number, number, number] => [
   Math.round(cx * S),
   Math.round(cy * S),
   Math.round(rx * S),
@@ -29,16 +38,44 @@ export const LEVEL2: LevelData = {
   subtitle: TEXT.level2Subtitle,
   assetBase: 'assets/level2/',
   masterFile: 'conduit_master.png',
+  nextScene: 'Level3',
   world: { width: Math.round(1280 * S), height: Math.round(720 * S) },
   floorCenter: p(690, 345),
   playerStart: p(640, 440), // open floor just south of the central altar
 
   // Large open diamond-shaped combat floor, hand-traced on the master. Player FEET must stay inside.
   walkable: poly([
-    [375, 208], [520, 201], [650, 199], [728, 211], [788, 235], [848, 260], [902, 285], [960, 320],
-    [1008, 341], [1056, 374], [1096, 400], [1120, 425], [1088, 446], [1028, 475], [958, 502],
-    [898, 509], [840, 517], [760, 519], [700, 525], [620, 519], [560, 509], [502, 489], [456, 475],
-    [402, 459], [348, 433], [304, 413], [266, 370], [266, 322], [302, 294], [322, 265], [348, 239],
+    [375, 208],
+    [520, 201],
+    [650, 199],
+    [728, 211],
+    [788, 235],
+    [848, 260],
+    [902, 285],
+    [960, 320],
+    [1008, 341],
+    [1056, 374],
+    [1096, 400],
+    [1120, 425],
+    [1088, 446],
+    [1028, 475],
+    [958, 502],
+    [898, 509],
+    [840, 517],
+    [760, 519],
+    [700, 525],
+    [620, 519],
+    [560, 509],
+    [502, 489],
+    [456, 475],
+    [402, 459],
+    [348, 433],
+    [304, 413],
+    [266, 370],
+    [266, 322],
+    [302, 294],
+    [322, 265],
+    [348, 239],
   ]),
 
   animated: true, // flames + waterfalls play from public/assets/level2/anim.json (cut from the animated master)
@@ -94,10 +131,10 @@ export const LEVEL2: LevelData = {
    */
   entries: [
     entry('stairs_nw', 340, 185), // Top of north-west stairs (solid stone path player cannot access)
-    entry('stairs_n', 775, 175),  // Top of north stairs
+    entry('stairs_n', 775, 175), // Top of north stairs
     entry('stairs_e', 1065, 350), // Top of east stairs
     entry('stairs_se', 965, 525), // Top of south-east stairs
-    entry('stairs_s', 735, 550),  // Top of south stairs
+    entry('stairs_s', 735, 550), // Top of south stairs
     entry('stairs_sw', 440, 500), // Top of south-west stairs
   ],
 
