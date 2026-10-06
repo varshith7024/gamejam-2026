@@ -19,7 +19,6 @@ import { LEVEL1 } from '../environment/level1Data';
 import { LEVEL2 } from '../environment/level2Data';
 import { LEVEL3 } from '../environment/level3Data';
 import { Atmosphere } from '../effects/Atmosphere';
-import { resolveStartScene } from '../config/dev';
 import { ColorCurvePipeline } from '../shaders/ColorCurvePipeline';
 
 export class BootScene extends Phaser.Scene {
@@ -583,7 +582,7 @@ export class BootScene extends Phaser.Scene {
     this.time.delayedCall(250, () => {
       this.cameras.main.fade(350, 0, 0, 0);
       this.time.delayedCall(350, () => {
-        this.scene.start(resolveStartScene());
+        this.scene.start('MainMenu');
       });
     });
   }

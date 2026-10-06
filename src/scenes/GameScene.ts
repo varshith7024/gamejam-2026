@@ -130,7 +130,6 @@ export class GameScene extends Phaser.Scene {
   private atmosphere!: Atmosphere;
   private player!: Phaser.GameObjects.Sprite;
   private enemies: Enemy[] = [];
-  private debugOn = false;
 
   // Player Health Bar (Clean black bar with red inner bar, bottom-left)
   public readonly maxHealth = 75;
@@ -284,9 +283,6 @@ export class GameScene extends Phaser.Scene {
   private keyV!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyU!: Phaser.Input.Keyboard.Key;
-  private keyH!: Phaser.Input.Keyboard.Key;
-  private keyK!: Phaser.Input.Keyboard.Key;
-  private keyG!: Phaser.Input.Keyboard.Key;
 
   /** `level` = which level's data (world, floor, props, atmosphere, roster) this scene plays. Level 1 by default. */
   constructor(
@@ -547,13 +543,6 @@ export class GameScene extends Phaser.Scene {
       this.events.off('boss-ground-slam');
       this.events.off('boss-enrage');
     });
-
-    // Debug mode (?debug in URL)
-    if (new URLSearchParams(window.location.search).has('debug')) {
-      this.debugOn = true;
-      this.env.setDebug(true);
-      (window as unknown as Record<string, unknown>).__level1 = this;
-    }
   }
 
   // -----------------------------------------------------------------
@@ -2979,38 +2968,6 @@ export class GameScene extends Phaser.Scene {
     this.keyV = kb.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyU = kb.addKey(Phaser.Input.Keyboard.KeyCodes.U);
-    this.keyH = kb.addKey(Phaser.Input.Keyboard.KeyCodes.H);
-    this.keyK = kb.addKey(Phaser.Input.Keyboard.KeyCodes.K);
-    this.keyG = kb.addKey(Phaser.Input.Keyboard.KeyCodes.G);
-
-    // Quick Level Navigation Hotkeys: 1 (Level 1), 2 (Level 2), 3 (Level 3 Boss Arena)
-    const key1 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
-    key1.on('down', () => this.scene.start('Level1'));
-    const key2 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
-    key2.on('down', () => this.scene.start('Level2'));
-    const key3 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
-    key3.on('down', () => this.scene.start('Level3'));
-
-    const num1 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ONE);
-    num1.on('down', () => this.scene.start('Level1'));
-    const num2 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_TWO);
-    num2.on('down', () => this.scene.start('Level2'));
-    const num3 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_THREE);
-    num3.on('down', () => this.scene.start('Level3'));
-
-    // Debug hotkey: In Level 3 Boss chamber, press 0 to trigger fatal hit on Boss for testing
-    const key0 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
-    key0.on('down', () => {
-      if (this.level.id === 'level3' && this.bossEnemy && !this.bossEnemy.isDead) {
-        this.bossEnemy.takeDamage(this.player.x, this.player.y, this.env.area, 9999);
-      }
-    });
-    const num0 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ZERO);
-    num0.on('down', () => {
-      if (this.level.id === 'level3' && this.bossEnemy && !this.bossEnemy.isDead) {
-        this.bossEnemy.takeDamage(this.player.x, this.player.y, this.env.area, 9999);
-      }
-    });
 
     // Left Click Attack
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -3132,11 +3089,6 @@ export class GameScene extends Phaser.Scene {
 
     const dt = Math.min(deltaMs / 1000, 0.05);
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyG)) {
-      this.debugOn = !this.debugOn;
-      this.env.setDebug(this.debugOn);
-    }
-
     if (this.isDead) {
       this.updateCamera(dt);
       return;
@@ -3244,17 +3196,6 @@ export class GameScene extends Phaser.Scene {
   // ACTION INPUTS
   // -----------------------------------------------------------------
   private handleActionInputs() {
-    if (Phaser.Input.Keyboard.JustDown(this.keyK)) {
-      this.die();
-      return;
-    }
-
-    if (Phaser.Input.Keyboard.JustDown(this.keyH)) {
-      this.damagePlayer(5);
-      this.flashPlayerHurt();
-      return;
-    }
-
     if (Phaser.Input.Keyboard.JustDown(this.keySpace)) {
       if (this.cooldownDash <= 0) {
         this.triggerRoll();
