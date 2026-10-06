@@ -190,12 +190,14 @@ export class GameScene extends Phaser.Scene {
   private bossHpText?: Phaser.GameObjects.Text;
   private bossTitleText?: Phaser.GameObjects.Text;
 
-  // Carried Light Level Across Scenes
+  // Carried Light Level and Score Across Scenes
   private carriedLightLevel?: number;
+  private carriedScore?: number;
 
   // Level 3 Boss Climax
   private bossDefeatedHandled = false;
   private isPausedAfterBoss = false;
+  private cutscene2Triggered = false;
   private bossMinionTimers: Phaser.Time.TimerEvent[] = [];
 
   // Controls Tutorial Popup (Level 1)
@@ -293,9 +295,13 @@ export class GameScene extends Phaser.Scene {
     super(key);
   }
 
-  init(data?: { carriedLightLevel?: number }) {
+  init(data?: { carriedLightLevel?: number; carriedScore?: number }) {
     this.carriedLightLevel = data?.carriedLightLevel;
+    this.carriedScore = data?.carriedScore;
     this.resetSceneState();
+    if (this.carriedScore !== undefined) {
+      this.score = this.carriedScore;
+    }
   }
 
   private resetSceneState() {
@@ -321,6 +327,7 @@ export class GameScene extends Phaser.Scene {
     this.bossEnemy = undefined;
     this.bossDefeatedHandled = false;
     this.isPausedAfterBoss = false;
+    this.cutscene2Triggered = false;
     this.bossMinionTimers.forEach((t) => t.remove());
     this.bossMinionTimers = [];
     this.bossHpBgGfx = undefined;
@@ -434,9 +441,10 @@ export class GameScene extends Phaser.Scene {
     if (this.level.id === 'level1') {
       this.showControlsPopup();
     } else {
-      this.showTitleCard();
-      // Start Wave Progression
-      this.startWave(1);
+      this.showTitleCard(() => {
+        // Start Wave Progression after title card finishes
+        this.startWave(1);
+      });
     }
 
     // Boss ground strike impact handler (Level 3 Abyss)
@@ -1344,8 +1352,9 @@ export class GameScene extends Phaser.Scene {
         onComplete: () => {
           popupContainer.destroy();
           this.controlsPopupContainer = undefined;
-          this.showTitleCard();
-          this.startWave(1);
+          this.showTitleCard(() => {
+            this.startWave(1);
+          });
         },
       });
     };
@@ -1413,7 +1422,7 @@ export class GameScene extends Phaser.Scene {
   // -----------------------------------------------------------------
   // UI, TITLE CARD & WAVE PROGRESSION (STYLE OF "THE VEIL")
   // -----------------------------------------------------------------
-  private showTitleCard() {
+  private showTitleCard(onComplete?: () => void) {
     const { width, height } = this.scale;
     const z = BALANCE.level1CameraZoom;
     const toCamY = (screenY: number) => height / 2 + (screenY - height / 2) / z;
@@ -1452,12 +1461,15 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: [title, sub],
       alpha: 1,
-      duration: 900,
-      hold: 1800,
+      duration: 700,
+      hold: 1400,
       yoyo: true,
       onComplete: () => {
         title.destroy();
         sub.destroy();
+        if (onComplete) {
+          onComplete();
+        }
       },
     });
   }
@@ -2124,9 +2136,16 @@ export class GameScene extends Phaser.Scene {
     // Spawn kill effect: motes for Yi, spirits for Zed, purple spirit for Enemy3
     this.spawnEnemyDefeatEffect(enemy);
 
-    // Brighten the background and level props: increase target light level by 5% (0.05) per enemy defeated, capped by level max.
+    // Brighten the background and level props: increase target light level on enemy defeat:
+    // 15% (0.15) for Zed, 10% (0.10) for Enemy3, 5% (0.05) for Yi/others, capped by level max.
     // The smooth, continuous transition is processed frame-by-frame in updateBlackPoint().
-    this.targetBlackPoint = Math.min(this.getMaxLightLevel(), this.targetBlackPoint + 0.05);
+    let lightInc = 0.05;
+    if (enemy.championType === 'Zed') {
+      lightInc = 0.15;
+    } else if (enemy.championType === 'Enemy3') {
+      lightInc = 0.10;
+    }
+    this.targetBlackPoint = Math.min(this.getMaxLightLevel(), this.targetBlackPoint + lightInc);
 
     this.checkWaveProgress();
   }
@@ -2502,7 +2521,7 @@ export class GameScene extends Phaser.Scene {
           this.time.delayedCall(2000, () => {
             this.cameras.main.fade(800, 0, 0, 0);
             this.time.delayedCall(800, () => {
-              this.scene.start(next, { carriedLightLevel: this.blackPoint });
+              this.scene.start(next, { carriedLightLevel: this.blackPoint, carriedScore: this.score });
             });
           });
         }
@@ -2551,18 +2570,42 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Gradually push light level to 90%
-    this.targetBlackPoint = 0.90;
-
-    // Pause player action and pause scene for now
+    // Pause player action while screen brightens to 90% white
     this.isPausedAfterBoss = true;
     this.currentAction = 'idle';
     this.actionVelocity.set(0, 0);
     this.playDirectional('Idle', this.currentAimDir, false);
 
-    this.time.delayedCall(2000, () => {
-      this.scene.pause();
+    // Smoothly and dramatically ramp light level to 90% white over 1.2 seconds
+    this.targetBlackPoint = 0.90;
+    this.tweens.add({
+      targets: this,
+      blackPoint: 0.90,
+      duration: 1200,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        this.applyBlackPoint();
+      },
+      onComplete: () => {
+        this.triggerCutscene2();
+      },
     });
+
+    // Safety fallback timer to trigger Cutscene 2 if not triggered by light level threshold
+    this.time.delayedCall(1600, () => {
+      this.triggerCutscene2();
+    });
+  }
+
+  private triggerCutscene2() {
+    if (this.cutscene2Triggered) return;
+    this.cutscene2Triggered = true;
+    this.registry.set('finalScore', this.score);
+    this.stopAllCombatAudio();
+    try {
+      (this.sound as any).stopAll?.();
+    } catch {}
+    this.scene.start('Cutscene2', { score: this.score });
   }
 
   private setupInput() {
@@ -2729,6 +2772,9 @@ export class GameScene extends Phaser.Scene {
     if (this.isPausedAfterBoss) {
       this.updateBlackPoint(dt);
       this.updateCamera(dt);
+      if (this.blackPoint >= 0.895) {
+        this.triggerCutscene2();
+      }
       return;
     }
 

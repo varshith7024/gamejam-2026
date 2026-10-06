@@ -26,10 +26,8 @@ https://www.youtube.com/watch?v=n451uigPWdk
 AI USAGE:
 Code was written by Antigravity + Gemini and Claude
 Maps, some ability icons were generated with AI
+Some sprite animations were generated with Spriter
 
 todo:
-cutscenes
 show points
 remove dev stuff
-
-i added the first cutscene - look at public/assets/cutscene1.html - make this play after the user presses play and after this cutscene is done, go to level1

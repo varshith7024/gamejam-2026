@@ -1139,7 +1139,8 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.isActing = false;
       this.hasGroundStruck = false;
       this.isStumbling = false;
-      this.anims.stop();
+      this.currentAnimKey = 'idle';
+      this.playChampionAnim('idle', this.currentDir);
       this.setDepth(this.getFootY());
       this.clearTint();
       return;
