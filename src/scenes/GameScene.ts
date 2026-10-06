@@ -3185,11 +3185,12 @@ export class GameScene extends Phaser.Scene {
             this.lastShockwaveHitTime = this.time.now;
             this.sound.play('updateShockwaves', { volume: 0.60 });
           }
+          // Every circle deals 1.25 damage to monsters as the shockwave reaches them
           const killed = enemy.takeDamage(
             ring.centerX,
             ring.centerY,
             this.env.area,
-            2.5,
+            1.25,
             34,
             0.5,
           );

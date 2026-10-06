@@ -239,15 +239,28 @@ export class MainMenuScene extends Phaser.Scene {
       }
     };
 
+    const onCredits = () => {
+      if (this.isStartingGame) return;
+      this.isStartingGame = true;
+
+      this.cameras.main.fade(350, 0, 0, 0);
+      this.time.delayedCall(350, () => {
+        this.scene.start('Credits');
+      });
+    };
+
     creditsHitBox.on('pointerover', () => highlightCredits(true));
     creditsHitBox.on('pointerout', () => highlightCredits(false));
+    creditsHitBox.on('pointerdown', onCredits);
 
     creditsText.on('pointerover', () => highlightCredits(true));
     creditsText.on('pointerout', () => highlightCredits(false));
+    creditsText.on('pointerdown', onCredits);
 
-    // Keyboard shortcuts [Enter] or [Space] to play
+    // Keyboard shortcuts [Enter] or [Space] to play, [C] for credits
     this.input.keyboard?.once('keydown-ENTER', onPlay);
     this.input.keyboard?.once('keydown-SPACE', onPlay);
+    this.input.keyboard?.once('keydown-C', onCredits);
   }
 
   private createShowcaseEnemy3(width: number, height: number) {

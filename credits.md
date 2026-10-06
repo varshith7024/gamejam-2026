@@ -27,9 +27,5 @@ todo:
 level transitions
 cutscenes
 level 3 map + enemies
-higher res
 better looking texture
-match UI to sprites
-sprites getting stuck behind props
-loading screen
-nerf ultimate
+remove dev stuff

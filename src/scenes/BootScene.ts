@@ -23,12 +23,153 @@ import { resolveStartScene } from '../config/dev';
 import { ColorCurvePipeline } from '../shaders/ColorCurvePipeline';
 
 export class BootScene extends Phaser.Scene {
+  private loadingFillGfx?: Phaser.GameObjects.Graphics;
+  private loadingStatusText?: Phaser.GameObjects.Text;
+  private loadingPercentText?: Phaser.GameObjects.Text;
+  private barX = 640;
+  private barY = 400;
+  private barW = 480;
+  private barH = 22;
+
   constructor() {
     super('Boot');
   }
 
+  private drawProgressBar(progress: number) {
+    if (!this.loadingFillGfx) return;
+    this.loadingFillGfx.clear();
+    const clamped = Math.max(0, Math.min(1, progress));
+    const fillW = Math.round(this.barW * clamped);
+    if (fillW > 0) {
+      this.loadingFillGfx.fillStyle(0xffffff, 1.0);
+      this.loadingFillGfx.fillRect(this.barX - this.barW / 2, this.barY - this.barH / 2, fillW, this.barH);
+
+      // Distinct black vertical notch marks across fill for ink-codex aesthetic
+      this.loadingFillGfx.fillStyle(0x000000, 1.0);
+      const notchInterval = 16;
+      for (let gx = this.barX - this.barW / 2 + notchInterval; gx < this.barX - this.barW / 2 + fillW; gx += notchInterval) {
+        this.loadingFillGfx.fillRect(gx - 1, this.barY - this.barH / 2, 2, this.barH);
+      }
+    }
+  }
+
   preload() {
+    const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#000000');
+
+    this.barX = width / 2;
+    this.barY = height * 0.55;
+    this.barW = 480;
+    this.barH = 22;
+
+    // --- 1. VISUAL LOADING SCREEN ---
+    this.add.text(this.barX, height * 0.36, 'NEGATIVE SPACE', {
+      fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
+      fontSize: '44px',
+      fontStyle: 'bold',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 4,
+      letterSpacing: 8,
+    }).setOrigin(0.5, 0.5);
+
+    this.add.text(this.barX, height * 0.36 + 46, '❖   AWAKENING THE RUINS   ❖', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '13px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+      letterSpacing: 4,
+    }).setOrigin(0.5, 0.5);
+
+    // Ornate Progress Bar Frame
+    const barFrameGfx = this.add.graphics();
+    // Backing plate
+    barFrameGfx.fillStyle(0x000000, 1.0);
+    barFrameGfx.fillRect(this.barX - this.barW / 2 - 4, this.barY - this.barH / 2 - 4, this.barW + 8, this.barH + 8);
+    // Outer white frame
+    barFrameGfx.lineStyle(2, 0xffffff, 1.0);
+    barFrameGfx.strokeRect(this.barX - this.barW / 2 - 2, this.barY - this.barH / 2 - 2, this.barW + 4, this.barH + 4);
+    // Inner subtle guide line
+    barFrameGfx.lineStyle(1, 0xffffff, 0.4);
+    barFrameGfx.strokeRect(this.barX - this.barW / 2, this.barY - this.barH / 2, this.barW, this.barH);
+
+    // Corner rivets
+    barFrameGfx.fillStyle(0xffffff, 1.0);
+    const cr = [
+      [this.barX - this.barW / 2 - 2, this.barY - this.barH / 2 - 2],
+      [this.barX + this.barW / 2 + 2, this.barY - this.barH / 2 - 2],
+      [this.barX - this.barW / 2 - 2, this.barY + this.barH / 2 + 2],
+      [this.barX + this.barW / 2 + 2, this.barY + this.barH / 2 + 2],
+    ];
+    for (const [cx, cy] of cr) {
+      barFrameGfx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+    }
+
+    this.loadingFillGfx = this.add.graphics();
+
+    this.loadingStatusText = this.add.text(this.barX - this.barW / 2, this.barY + this.barH / 2 + 12, 'INITIALIZING COMBAT REALM...', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '11px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+      letterSpacing: 2,
+    }).setOrigin(0, 0);
+
+    this.loadingPercentText = this.add.text(this.barX + this.barW / 2, this.barY + this.barH / 2 + 12, '0%', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+      letterSpacing: 1,
+    }).setOrigin(1, 0);
+
+    this.add.text(this.barX, height * 0.72, '✦ Slay the encroaching shadows to restore the light ✦', {
+      fontFamily: '"Cinzel", "Georgia", serif',
+      fontSize: '12px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+      letterSpacing: 3,
+    }).setOrigin(0.5, 0.5);
+
+    // Loader event listeners
+    this.load.on('progress', (val: number) => {
+      this.drawProgressBar(val);
+      this.loadingPercentText?.setText(`${Math.round(val * 100)}%`);
+    });
+
+    this.load.on('fileprogress', (file: Phaser.Loader.File) => {
+      const key = file.key || file.src || '';
+      let display = key;
+      if (key.startsWith('Boss_')) {
+        display = 'EXECUTIONER INK SPRITES';
+      } else if (key.startsWith('Yi_') || key.startsWith('Zed_') || key.startsWith('Enemy3_')) {
+        display = 'SHADOW MONSTERS';
+      } else if (key.startsWith('level1_prop_')) {
+        display = `PROP: ${key.replace('level1_prop_', '').toUpperCase()}`;
+      } else if (key.includes('atmos')) {
+        display = 'ATMOSPHERE & SPIRITS';
+      } else if (key.includes('Music') || key.includes('music') || key.startsWith('trigger') || key.startsWith('detonate') || key.startsWith('check')) {
+        display = 'COMBAT AUDIO & MUSIC';
+      } else if (key.includes('master')) {
+        display = 'ANCIENT ARENA ARCHITECTURE';
+      } else if (key.startsWith('icon_') || key.includes('ultimate')) {
+        display = 'MARTIAL ABILITY CODEX';
+      }
+      this.loadingStatusText?.setText(`CONJURING ${display}...`);
+    });
+
+    this.load.on('complete', () => {
+      this.drawProgressBar(1.0);
+      this.loadingPercentText?.setText('100%');
+      this.loadingStatusText?.setText('SANCTUARY PREPARED');
+    });
+
+    // --- 2. ASSET QUEUE ---
     this.load.setPath('');
     this.load.image('ball_only', 'assets/ball_only.png');
 
@@ -120,6 +261,50 @@ export class BootScene extends Phaser.Scene {
           },
         );
       }
+    }
+
+    // Explicitly preload all props in Level 1 to guarantee all props are loaded
+    const LEVEL1_PROPS = [
+      'arch_ruin', 'brazier_ruin', 'floor_slab', 'gate_wall',
+      'pedestal_block', 'pillar_broken', 'pillar_tall', 'rubble_scatter',
+      'rubble_tomb', 'ruin_pile', 'shrine_tree', 'statue_small',
+      'statue_tree', 'tree_rubble_big', 'tree_rubble_small',
+    ];
+    for (const p of LEVEL1_PROPS) {
+      this.load.image(`level1_prop_${p}`, `assets/level1/props/prop_${p}.png`);
+    }
+
+    // Explicitly preload all occluders for all levels
+    this.load.image('occ_pillar_cluster_se', 'assets/level1/occluders/occ_pillar_cluster_se.png');
+    this.load.image('occ_altar', 'assets/level2/occluders/occ_altar.png');
+    this.load.image('occ_brazier_nw', 'assets/level2/occluders/occ_brazier_nw.png');
+    this.load.image('occ_brazier_w', 'assets/level2/occluders/occ_brazier_w.png');
+    this.load.image('occ_brazier_e', 'assets/level2/occluders/occ_brazier_e.png');
+
+    // Explicitly preload all Level 2 animated flame & waterfall spritesheets
+    const LEVEL2_ANIMS = [
+      { key: 'level2_anim_altar', file: 'assets/level2/anim/altar.png', w: 98, h: 150 },
+      { key: 'level2_anim_nw', file: 'assets/level2/anim/nw.png', w: 97, h: 106 },
+      { key: 'level2_anim_w', file: 'assets/level2/anim/w.png', w: 76, h: 110 },
+      { key: 'level2_anim_e', file: 'assets/level2/anim/e.png', w: 82, h: 98 },
+      { key: 'level2_anim_se', file: 'assets/level2/anim/se.png', w: 70, h: 100 },
+      { key: 'level2_anim_s', file: 'assets/level2/anim/s.png', w: 72, h: 110 },
+      { key: 'level2_anim_n1', file: 'assets/level2/anim/n1.png', w: 71, h: 97 },
+      { key: 'level2_anim_n2', file: 'assets/level2/anim/n2.png', w: 88, h: 85 },
+      { key: 'level2_anim_fall_w1', file: 'assets/level2/anim/fall_w1.png', w: 110, h: 260 },
+      { key: 'level2_anim_fall_w2', file: 'assets/level2/anim/fall_w2.png', w: 82, h: 168 },
+      { key: 'level2_anim_fall_w3', file: 'assets/level2/anim/fall_w3.png', w: 92, h: 134 },
+      { key: 'level2_anim_fall_n1', file: 'assets/level2/anim/fall_n1.png', w: 110, h: 136 },
+      { key: 'level2_anim_fall_n2', file: 'assets/level2/anim/fall_n2.png', w: 89, h: 146 },
+      { key: 'level2_anim_fall_e1', file: 'assets/level2/anim/fall_e1.png', w: 107, h: 155 },
+      { key: 'level2_anim_fall_e2', file: 'assets/level2/anim/fall_e2.png', w: 82, h: 106 },
+      { key: 'level2_anim_fall_e3', file: 'assets/level2/anim/fall_e3.png', w: 89, h: 172 },
+      { key: 'level2_anim_fall_e4', file: 'assets/level2/anim/fall_e4.png', w: 119, h: 209 },
+      { key: 'level2_anim_fall_s1', file: 'assets/level2/anim/fall_s1.png', w: 122, h: 224 },
+      { key: 'level2_anim_fall_s2', file: 'assets/level2/anim/fall_s2.png', w: 104, h: 108 },
+    ];
+    for (const a of LEVEL2_ANIMS) {
+      this.load.spritesheet(a.key, a.file, { frameWidth: a.w, frameHeight: a.h });
     }
 
     // Preload each level's environment & atmospheric effects (same loaders, per-level data)
@@ -390,6 +575,16 @@ export class BootScene extends Phaser.Scene {
       );
     }
 
-    this.scene.start(resolveStartScene());
+    this.drawProgressBar(1.0);
+    this.loadingPercentText?.setText('100%');
+    this.loadingStatusText?.setText('SANCTUARY RESTORED');
+
+    // Smooth transition into Main Menu after ensuring all props and assets are loaded
+    this.time.delayedCall(250, () => {
+      this.cameras.main.fade(350, 0, 0, 0);
+      this.time.delayedCall(350, () => {
+        this.scene.start(resolveStartScene());
+      });
+    });
   }
 }
