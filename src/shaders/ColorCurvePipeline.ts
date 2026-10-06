@@ -154,19 +154,19 @@ export class ColorCurvePipeline extends Phaser.Renderer.WebGL.Pipelines.PostFXPi
    *   Together with exponent shaping, this adds dynamic contrast rather than turning flat white or flat black.
    */
   public static setLightLevel(level: number): void {
-    const clampedLevel = Phaser.Math.Clamp(level, -0.50, 0.35);
+    const clampedLevel = Phaser.Math.Clamp(level, -1.00, 0.90);
 
-    // Continuous inverse-correlation across light range [-0.50, +0.35]
-    // u = 0.0 at -50% (Level 1), u = 1.0 at +35% (max radiant light)
-    const u = (clampedLevel - (-0.50)) / 0.85;
+    // Continuous inverse-correlation across light range [-1.00, +0.90]
+    // u = 0.0 at -100%, u = 1.0 at +90%
+    const u = (clampedLevel - (-1.00)) / 1.90;
 
-    // White point applied to X position: decreases from 255.0 down to 195.0 as light increases
-    ColorCurvePipeline.x1 = 255.0 - u * 60.0;
+    // White point applied to X position: decreases from 255.0 down to 180.0 as light increases
+    ColorCurvePipeline.x1 = 255.0 - u * 75.0;
     ColorCurvePipeline.y1 = 255.0; // Never cap white down to gray
 
-    // Black point applied to Y position: inversely correlated with x1 (increases from 0.0 up to 12.0)
+    // Black point applied to Y position: inversely correlated with x1 (increases from 0.0 up to 20.0)
     ColorCurvePipeline.x0 = 0.0;
-    ColorCurvePipeline.y0 = u * 12.0; // Anchored near true black to preserve shadow contrast
+    ColorCurvePipeline.y0 = u * 20.0; // Anchored near true black to preserve shadow contrast
 
     // Exponent curve shaping:
     // When clampedLevel < 0: exponent > 1.0 (deepens darks/midtones into moody gothic shadows)
@@ -174,7 +174,7 @@ export class ColorCurvePipeline extends Phaser.Renderer.WebGL.Pipelines.PostFXPi
     if (clampedLevel >= 0) {
       ColorCurvePipeline.exponent = 1.0 / (1.0 + clampedLevel * 1.5);
     } else {
-      ColorCurvePipeline.exponent = 1.0 + Math.abs(clampedLevel) * 1.8;
+      ColorCurvePipeline.exponent = 1.0 + Math.abs(clampedLevel) * 2.2;
     }
   }
 

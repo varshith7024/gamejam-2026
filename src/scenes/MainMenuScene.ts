@@ -164,7 +164,7 @@ export class MainMenuScene extends Phaser.Scene {
       playText.setColor('#ffffff');
       this.cameras.main.fade(500, 0, 0, 0);
       this.time.delayedCall(500, () => {
-        this.scene.start('Level1');
+        this.scene.start('Cutscene1');
       });
     };
 
