@@ -49,7 +49,7 @@ export class Level1Environment {
         .filter((p) => p.footprint)
         .map((p) => ellipsePolygon(p.x, p.y, p.footprint![0], p.footprint![1])),
     ];
-    this.area = new WalkableArea(level.walkable, blockers, level.navWaypoints);
+    this.area = new WalkableArea(level.walkable, blockers, level.navWaypoints, level.navRings);
     this.build();
   }
 
@@ -257,14 +257,17 @@ export class Level1Environment {
       g.fillCircle(e.x, e.y, 14);
       g.strokeCircle(e.x, e.y, 14);
     }
-    if (this.area.navWaypoints.length > 0) {
-      g.lineStyle(1.5, 0xffea00, 0.6);
-      trace(this.area.navWaypoints);
-      g.strokePath();
-      g.lineStyle(2, 0xffea00, 0.95).fillStyle(0xffea00, 0.4);
-      for (const w of this.area.navWaypoints) {
-        g.fillCircle(w[0], w[1], 7);
-        g.strokeCircle(w[0], w[1], 7);
+    if (this.area.navRings.length > 0) {
+      for (const ring of this.area.navRings) {
+        if (ring.length === 0) continue;
+        g.lineStyle(1.5, 0xffea00, 0.6);
+        trace(ring);
+        g.strokePath();
+        g.lineStyle(2, 0xffea00, 0.95).fillStyle(0xffea00, 0.4);
+        for (const w of ring) {
+          g.fillCircle(w[0], w[1], 7);
+          g.strokeCircle(w[0], w[1], 7);
+        }
       }
     }
     this.debugGfx = g;

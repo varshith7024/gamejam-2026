@@ -583,7 +583,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
             this.y,
             playerX,
             playerY,
-            10,
+            6,
             this.navRingDir,
             this.navWptIdx,
           );
@@ -605,7 +605,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         let vy = tdy / (distToTarget || 1);
 
         if (this.separationX !== 0 || this.separationY !== 0) {
-          const sepWeight = 0.85;
+          const sepWeight = this.navWptIdx >= 0 ? 0.35 : 0.85;
           vx += this.separationX * sepWeight;
           vy += this.separationY * sepWeight;
 
@@ -616,8 +616,10 @@ export class Enemy extends Phaser.GameObjects.Sprite {
           }
         }
 
-        // Slow down forward movement during sharp turns so the enemy pivots naturally on their feet
-        const turnSpeedFactor = angleDiff === 0 ? 1.0 : (angleDiff === 1 || angleDiff === 7 ? 0.85 : 0.4);
+        // Slow down forward movement during sharp turns based on actual movement direction change
+        const targetMoveDir = this.computeDirection(vx, vy);
+        const moveAngleDiff = (targetMoveDir - this.currentDir + 8) % 8;
+        const turnSpeedFactor = moveAngleDiff === 0 ? 1.0 : (moveAngleDiff === 1 || moveAngleDiff === 7 ? 0.9 : 0.65);
         const stepX = vx * this.walkSpeed * turnSpeedFactor * dt;
         const stepY = vy * this.walkSpeed * turnSpeedFactor * dt * 0.85;
 
@@ -631,7 +633,6 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         }
 
         // Keep facing direction smoothly turning towards target
-        const targetMoveDir = this.computeDirection(vx, vy);
         this.stepDirectionTowards(targetMoveDir, dt);
         const animKey = `${this.championType}_${this.config.locomotionAnim}_${this.currentDir}`;
         if (this.anims.currentAnim?.key !== animKey) {
@@ -782,7 +783,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
         this.y,
         playerX,
         playerY,
-        10,
+        6,
         this.navRingDir,
         this.navWptIdx,
       );

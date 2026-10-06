@@ -54,6 +54,8 @@ export interface LevelData {
   roster: { light: ChampionType; heavy: ChampionType };
   /** Optional navigation waypoints for routing enemies around obstacles (e.g. central beacon/altar). */
   navWaypoints?: Pt[];
+  /** Optional navigation clearance rings around individual props or obstacles. */
+  navRings?: Pt[][];
   /** Optional enemy entry markers. Without them enemies spawn on a ring around floorCenter (Level 1). */
   entries?: EnemyEntry[];
   /** Optional scene to start after the last wave is cleared. */
