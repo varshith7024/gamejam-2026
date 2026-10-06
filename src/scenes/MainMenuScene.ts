@@ -39,10 +39,11 @@ export class MainMenuScene extends Phaser.Scene {
     this.atmosphere = new Atmosphere(this, LEVEL1);
     this.atmosphere.create({ vignette: false });
 
-    // Set initial camera position near the center of the ruins
+    // Set initial camera position safely centered within the ruins world bounds
     this.cameras.main.setBackgroundColor('#000000');
     this.cameras.main.setZoom(1.0);
-    this.cameras.main.centerOn(LEVEL1.floorCenter.x, LEVEL1.floorCenter.y);
+    this.cameras.main.setBounds(0, 0, LEVEL1.world.width, LEVEL1.world.height);
+    this.cameras.main.centerOn(LEVEL1.world.width / 2, LEVEL1.world.height / 2);
 
     // 2. Left-Aligned Medieval Fantasy Title & Navigation
     this.createMenuUI(width, height);
@@ -312,14 +313,30 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   update(time: number) {
-    // Cinematic camera sweeping gently around the Level 1 ruins
-    const centerX = LEVEL1.floorCenter.x;
-    const centerY = LEVEL1.floorCenter.y;
+    // Cinematic camera sweeping gently around the Level 1 ruins without ever exceeding world boundaries
     const cam = this.cameras.main;
+    const worldW = LEVEL1.world.width;
+    const worldH = LEVEL1.world.height;
+    const halfCamW = cam.width / 2;
+    const halfCamH = cam.height / 2;
 
-    // Smooth sweeping Lissajous camera motion across the ancient arena
-    const camX = centerX + Math.sin(time * 0.00035) * 260 + Math.cos(time * 0.00018) * 80;
-    const camY = centerY + Math.cos(time * 0.00028) * 140 + Math.sin(time * 0.00015) * 60;
-    cam.centerOn(camX, camY);
+    // Strict boundaries ensuring camera viewport stays fully inside the world image (with 2px anti-seam margin)
+    const safeMargin = 2;
+    const minCamX = halfCamW + safeMargin;
+    const maxCamX = Math.max(minCamX, worldW - halfCamW - safeMargin);
+    const minCamY = halfCamH + safeMargin;
+    const maxCamY = Math.max(minCamY, worldH - halfCamH - safeMargin);
+
+    const midX = (minCamX + maxCamX) / 2;
+    const midY = (minCamY + maxCamY) / 2;
+
+    // Smooth sweeping Lissajous camera motion oscillating safely within world image boundaries
+    const targetX = midX + Math.sin(time * 0.00035) * 78 + Math.cos(time * 0.00018) * 25;
+    const targetY = midY + Math.cos(time * 0.00028) * 75 + Math.sin(time * 0.00015) * 25;
+
+    const safeX = Phaser.Math.Clamp(targetX, minCamX, maxCamX);
+    const safeY = Phaser.Math.Clamp(targetY, minCamY, maxCamY);
+
+    cam.centerOn(safeX, safeY);
   }
 }
