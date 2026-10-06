@@ -44,18 +44,19 @@ export class GameOverScene extends Phaser.Scene {
       fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
       fontSize: '52px',
       fontStyle: 'bold',
-      color: '#d63031',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 4,
       letterSpacing: 8,
     }).setOrigin(0.5);
-
-    // Subtle dark red glow behind title
-    title.setShadow(0, 0, '#8a0000', 16, true, true);
 
     // Divider line
     const divider = this.add.text(centerX, centerY + 50, '───────  ❖  ───────', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
-      color: '#4a3d46',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 4,
     }).setOrigin(0.5);
 
@@ -63,7 +64,9 @@ export class GameOverScene extends Phaser.Scene {
     const subtitle = this.add.text(centerX, centerY + 82, 'THE SHADOWS HAVE CONSUMED YOUR LIGHT', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '13px',
-      color: '#7f7888',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 6,
     }).setOrigin(0.5);
 
@@ -77,20 +80,26 @@ export class GameOverScene extends Phaser.Scene {
     const retryText = this.add.text(0, 0, 'TRY AGAIN', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '26px',
-      color: '#d8d2c2',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 8,
     }).setOrigin(0.5);
 
     const retryDiamondLeft = this.add.text(-140, 0, '✦', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0);
 
     const retryDiamondRight = this.add.text(140, 0, '✦', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0);
 
     retryContainer.add([retryText, retryDiamondLeft, retryDiamondRight]);
@@ -107,13 +116,13 @@ export class GameOverScene extends Phaser.Scene {
 
     retryHitBox.on('pointerover', () => {
       retryText.setColor('#ffffff');
-      retryText.setShadow(0, 0, '#ffe073', 12, true, true);
+      retryText.setShadow(0, 0, '#ffffff', 12, true, true);
       retryDiamondLeft.setAlpha(1);
       retryDiamondRight.setAlpha(1);
     });
 
     retryHitBox.on('pointerout', () => {
-      retryText.setColor('#d8d2c2');
+      retryText.setColor('#ffffff');
       retryText.setShadow(0, 0, '#000000', 0, false, false);
       retryDiamondLeft.setAlpha(0);
       retryDiamondRight.setAlpha(0);
@@ -127,20 +136,26 @@ export class GameOverScene extends Phaser.Scene {
     const menuText = this.add.text(0, 0, 'MAIN MENU', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '22px',
-      color: '#8b8495',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 6,
     }).setOrigin(0.5);
 
     const menuDiamondLeft = this.add.text(-130, 0, '❖', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '14px',
-      color: '#ca9e52',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0);
 
     const menuDiamondRight = this.add.text(130, 0, '❖', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '14px',
-      color: '#ca9e52',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5).setAlpha(0);
 
     menuContainer.add([menuText, menuDiamondLeft, menuDiamondRight]);
@@ -157,12 +172,14 @@ export class GameOverScene extends Phaser.Scene {
 
     menuHitBox.on('pointerover', () => {
       menuText.setColor('#ffffff');
+      menuText.setShadow(0, 0, '#ffffff', 10, true, true);
       menuDiamondLeft.setAlpha(1);
       menuDiamondRight.setAlpha(1);
     });
 
     menuHitBox.on('pointerout', () => {
-      menuText.setColor('#8b8495');
+      menuText.setColor('#ffffff');
+      menuText.setShadow(0, 0, '#000000', 0, false, false);
       menuDiamondLeft.setAlpha(0);
       menuDiamondRight.setAlpha(0);
     });

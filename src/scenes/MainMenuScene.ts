@@ -40,7 +40,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.atmosphere.create({ vignette: false });
 
     // Set initial camera position near the center of the ruins
-    this.cameras.main.setBackgroundColor('#050408');
+    this.cameras.main.setBackgroundColor('#000000');
     this.cameras.main.setZoom(1.0);
     this.cameras.main.centerOn(LEVEL1.floorCenter.x, LEVEL1.floorCenter.y);
 
@@ -88,18 +88,19 @@ export class MainMenuScene extends Phaser.Scene {
       fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
       fontSize: '56px',
       fontStyle: 'bold',
-      color: '#f6ebd2',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 4,
       letterSpacing: 6,
     }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10);
-
-    // Subtle golden/amber glow shadow
-    title.setShadow(0, 4, '#ca8328', 12, true, true);
 
     // Ornate medieval divider line
     this.add.text(leftMargin, titleY + 48, '───────  ✦  ───────', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
-      color: '#b08b3e',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 4,
     }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10);
 
@@ -112,20 +113,26 @@ export class MainMenuScene extends Phaser.Scene {
     const playText = this.add.text(optionLeftX, btnStartY, 'PLAY', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '28px',
-      color: '#d8d2c2',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 8,
     }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10);
 
     const playDiamondLeft = this.add.text(leftMargin + 8, btnStartY, '✦', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10).setAlpha(0);
 
     const playDiamondRight = this.add.text(optionLeftX + playText.width + 20, btnStartY, '✦', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10).setAlpha(0);
 
     // Hit box for mouse interaction (with scrollFactor 0 for accurate screen-space hit testing)
@@ -154,7 +161,7 @@ export class MainMenuScene extends Phaser.Scene {
         });
       }
 
-      playText.setColor('#ffd700');
+      playText.setColor('#ffffff');
       this.cameras.main.fade(500, 0, 0, 0);
       this.time.delayedCall(500, () => {
         this.scene.start('Level1');
@@ -164,11 +171,11 @@ export class MainMenuScene extends Phaser.Scene {
     const highlightPlay = (on: boolean) => {
       if (on) {
         playText.setColor('#ffffff');
-        playText.setShadow(0, 0, '#ffe073', 12, true, true);
+        playText.setShadow(0, 0, '#ffffff', 12, true, true);
         playDiamondLeft.setAlpha(1);
         playDiamondRight.setAlpha(1);
       } else {
-        playText.setColor('#d8d2c2');
+        playText.setColor('#ffffff');
         playText.setShadow(0, 0, '#000000', 0, false, false);
         playDiamondLeft.setAlpha(0);
         playDiamondRight.setAlpha(0);
@@ -188,20 +195,26 @@ export class MainMenuScene extends Phaser.Scene {
     const creditsText = this.add.text(optionLeftX, creditsY, 'CREDITS', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '22px',
-      color: '#8b8495',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 6,
     }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10);
 
     const creditsDiamondLeft = this.add.text(leftMargin + 8, creditsY, '❖', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '14px',
-      color: '#ca9e52',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10).setAlpha(0);
 
     const creditsDiamondRight = this.add.text(optionLeftX + creditsText.width + 20, creditsY, '❖', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '14px',
-      color: '#ca9e52',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(DEPTH.screen + 10).setAlpha(0);
 
     const creditsHitBox = this.add.zone(leftMargin, creditsY, creditsText.width + 64, 44)
@@ -215,11 +228,11 @@ export class MainMenuScene extends Phaser.Scene {
     const highlightCredits = (on: boolean) => {
       if (on) {
         creditsText.setColor('#ffffff');
-        creditsText.setShadow(0, 0, '#ffe073', 10, true, true);
+        creditsText.setShadow(0, 0, '#ffffff', 10, true, true);
         creditsDiamondLeft.setAlpha(1);
         creditsDiamondRight.setAlpha(1);
       } else {
-        creditsText.setColor('#8b8495');
+        creditsText.setColor('#ffffff');
         creditsText.setShadow(0, 0, '#000000', 0, false, false);
         creditsDiamondLeft.setAlpha(0);
         creditsDiamondRight.setAlpha(0);

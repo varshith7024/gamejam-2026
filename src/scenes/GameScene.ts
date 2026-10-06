@@ -180,7 +180,6 @@ export class GameScene extends Phaser.Scene {
   private uFrameImage?: Phaser.GameObjects.Image;
   private uBarGfx?: Phaser.GameObjects.Graphics;
   private uText?: Phaser.GameObjects.Text;
-  private uTitleText?: Phaser.GameObjects.Text;
   private uBadgeText?: Phaser.GameObjects.Text;
 
   // Boss Health Bar (Level 3 - Executioner)
@@ -305,7 +304,6 @@ export class GameScene extends Phaser.Scene {
     this.hpText = undefined as unknown as Phaser.GameObjects.Text;
     this.uBarGfx = undefined;
     this.uText = undefined;
-    this.uTitleText = undefined;
     this.uBadgeText = undefined;
     if (this.bossHealthContainer) {
       this.bossHealthContainer.destroy();
@@ -597,16 +595,18 @@ export class GameScene extends Phaser.Scene {
 
     // Keybind/badge [ HP ] on left
     const badgeGfx = this.add.graphics();
-    badgeGfx.fillStyle(0x180509, 0.95);
+    badgeGfx.fillStyle(0x000000, 1.0);
     badgeGfx.fillRect(0, 0, 32, 18);
-    badgeGfx.lineStyle(1.5, 0x881337, 1.0);
+    badgeGfx.lineStyle(1.5, 0xffffff, 1.0);
     badgeGfx.strokeRect(0, 0, 32, 18);
 
     const badgeText = this.add.text(16, 9, 'HP', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '11px',
       fontStyle: 'bold',
-      color: '#fca5a5',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
     }).setOrigin(0.5, 0.5);
 
     // Centered health numbers
@@ -615,9 +615,10 @@ export class GameScene extends Phaser.Scene {
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 1,
     }).setOrigin(0.5, 0.5);
-    this.hpText.setShadow(0, 1, '#4c0519', 4, true, true);
 
     this.healthContainer.add([this.hpBgGfx, this.hpFillGfx, badgeGfx, badgeText, this.hpText]);
 
@@ -635,24 +636,19 @@ export class GameScene extends Phaser.Scene {
 
     this.hpBgGfx.clear();
 
-    // 1. Pixelated 2px Stepped Dark Iron Frame
-    this.hpBgGfx.fillStyle(0x0a0204, 0.95);
+    // 1. Pixelated Stepped Black & White Frame
+    this.hpBgGfx.fillStyle(0x000000, 1.0);
     this.hpBgGfx.fillRect(barX, barY, barW, barH);
-    this.hpBgGfx.lineStyle(2, 0x1f060d, 1.0);
+    this.hpBgGfx.lineStyle(2, 0xffffff, 1.0);
     this.hpBgGfx.strokeRect(barX, barY, barW, barH);
-    this.hpBgGfx.lineStyle(1, 0x5a1827, 0.85);
+    this.hpBgGfx.lineStyle(1, 0xffffff, 0.4);
     this.hpBgGfx.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
 
-    // Inner empty slot (deep dark void)
-    this.hpBgGfx.fillStyle(0x130206, 1.0);
+    // Inner empty slot (pure black)
+    this.hpBgGfx.fillStyle(0x000000, 1.0);
     this.hpBgGfx.fillRect(barX + 2, barY + 2, barW - 4, barH - 4);
 
-    // Inner top/left shadow
-    this.hpBgGfx.fillStyle(0x060102, 0.8);
-    this.hpBgGfx.fillRect(barX + 2, barY + 2, barW - 4, 1);
-    this.hpBgGfx.fillRect(barX + 2, barY + 2, 1, barH - 4);
-
-    // 2. Pixelated & Shaded Ruby Red Fill
+    // 2. Pixelated Solid White Fill with Black Segment Notches
     this.hpFillGfx.clear();
     const maxInnerW = barW - 4;
     const innerW = Math.round(maxInnerW * frac);
@@ -662,36 +658,20 @@ export class GameScene extends Phaser.Scene {
       const fy = barY + 2;
       const fh = barH - 4; // 14px
 
-      // Layer 1: Top highlight gloss line (2px)
-      this.hpFillGfx.fillStyle(0xfecdd3, 0.95);
-      this.hpFillGfx.fillRect(fx, fy, innerW, 2);
-
-      // Layer 2: Vibrant ruby core (4px)
-      this.hpFillGfx.fillStyle(0xf43f5e, 1.0);
-      this.hpFillGfx.fillRect(fx, fy + 2, innerW, 4);
-
-      // Layer 3: Deep crimson mid (5px)
-      this.hpFillGfx.fillStyle(0xbe123c, 1.0);
-      this.hpFillGfx.fillRect(fx, fy + 6, innerW, 5);
-
-      // Layer 4: Dark shadow base (3px)
-      this.hpFillGfx.fillStyle(0x881337, 1.0);
-      this.hpFillGfx.fillRect(fx, fy + 11, innerW, 3);
+      this.hpFillGfx.fillStyle(0xffffff, 1.0);
+      this.hpFillGfx.fillRect(fx, fy, innerW, fh);
 
       // Segment tick notches every 20px (10 segments)
-      this.hpFillGfx.fillStyle(0x2e050f, 0.7);
+      this.hpFillGfx.fillStyle(0x000000, 1.0);
       for (let s = 20; s < innerW; s += 20) {
-        this.hpFillGfx.fillRect(fx + s, fy, 1, fh);
+        this.hpFillGfx.fillRect(fx + s, fy, 2, fh);
       }
     }
 
     if (this.hpText) {
       this.hpText.setText(`${Math.max(0, Math.ceil(this.health))} / ${this.maxHealth}`);
-      if (frac <= 0.25) {
-        this.hpText.setColor('#ff4d4d');
-      } else {
-        this.hpText.setColor('#ffffff');
-      }
+      this.hpText.setColor('#ffffff');
+      this.hpText.setStroke('#000000', 3);
     }
 
     this.updateHeartbeat();
@@ -741,10 +721,11 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#f5ebd0',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 6,
     }).setOrigin(0.5, 0);
-    this.bossTitleText.setShadow(0, 2, '#4c0519', 8, true, true);
 
     // HP readout text centered inside the health bar
     this.bossHpText = this.add.text(0, barH / 2, '', {
@@ -752,9 +733,10 @@ export class GameScene extends Phaser.Scene {
       fontSize: '9.5px',
       fontStyle: 'bold',
       color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 1,
     }).setOrigin(0.5, 0.5);
-    this.bossHpText.setShadow(0, 1, '#1f060d', 4, true, true);
 
     container.add([this.bossHpBgGfx, this.bossHpFillGfx, this.bossTitleText, this.bossHpText]);
 
@@ -774,18 +756,18 @@ export class GameScene extends Phaser.Scene {
 
     this.bossHpBgGfx.clear();
 
-    // 1. Dark Gothic Ironplate Frame with Stepped Border
-    this.bossHpBgGfx.fillStyle(0x060102, 0.95);
+    // 1. Gothic Black & White Ironplate Frame
+    this.bossHpBgGfx.fillStyle(0x000000, 1.0);
     this.bossHpBgGfx.fillRect(-halfW - 3, -2, barW + 6, barH + 4);
 
-    this.bossHpBgGfx.lineStyle(1.5, 0x1f060d, 1.0);
+    this.bossHpBgGfx.lineStyle(1.5, 0xffffff, 1.0);
     this.bossHpBgGfx.strokeRect(-halfW - 3, -2, barW + 6, barH + 4);
-    this.bossHpBgGfx.lineStyle(1, 0x5a1827, 0.85);
+    this.bossHpBgGfx.lineStyle(1, 0xffffff, 0.4);
     this.bossHpBgGfx.strokeRect(-halfW - 4, -3, barW + 8, barH + 6);
 
-    // End diamond accents in antique gold
+    // End diamond accents in pure white
     for (const dx of [-halfW - 5, halfW + 5]) {
-      this.bossHpBgGfx.fillStyle(0xc29b38, 0.95);
+      this.bossHpBgGfx.fillStyle(0xffffff, 1.0);
       this.bossHpBgGfx.beginPath();
       this.bossHpBgGfx.moveTo(dx, barH / 2 - 4);
       this.bossHpBgGfx.lineTo(dx + (dx > 0 ? 4 : -4), barH / 2);
@@ -795,16 +777,11 @@ export class GameScene extends Phaser.Scene {
       this.bossHpBgGfx.fillPath();
     }
 
-    // Inner empty slot (dark abyss)
-    this.bossHpBgGfx.fillStyle(0x130206, 1.0);
+    // Inner empty slot (pure black)
+    this.bossHpBgGfx.fillStyle(0x000000, 1.0);
     this.bossHpBgGfx.fillRect(-halfW, 0, barW, barH);
 
-    // Inner top/left shadow
-    this.bossHpBgGfx.fillStyle(0x040001, 0.8);
-    this.bossHpBgGfx.fillRect(-halfW, 0, barW, 1);
-    this.bossHpBgGfx.fillRect(-halfW, 0, 1, barH);
-
-    // 2. Pixelated & Shaded Ruby Red Boss Fill
+    // 2. Pure White Boss Fill with Black Notches
     this.bossHpFillGfx.clear();
     const innerW = Math.round(barW * frac);
 
@@ -813,37 +790,21 @@ export class GameScene extends Phaser.Scene {
       const fy = 0;
       const fh = barH;
 
-      // Layer 1: Rose quartz highlight gloss (2px)
-      this.bossHpFillGfx.fillStyle(0xfecdd3, 0.95);
-      this.bossHpFillGfx.fillRect(fx, fy, innerW, 2);
-
-      // Layer 2: Vibrant ruby core (3px)
-      this.bossHpFillGfx.fillStyle(0xf43f5e, 1.0);
-      this.bossHpFillGfx.fillRect(fx, fy + 2, innerW, 3);
-
-      // Layer 3: Deep crimson mid (4px)
-      this.bossHpFillGfx.fillStyle(0xbe123c, 1.0);
-      this.bossHpFillGfx.fillRect(fx, fy + 5, innerW, 4);
-
-      // Layer 4: Burgundy shadow base
-      this.bossHpFillGfx.fillStyle(0x881337, 1.0);
-      this.bossHpFillGfx.fillRect(fx, fy + 9, innerW, Math.max(1, fh - 9));
+      this.bossHpFillGfx.fillStyle(0xffffff, 1.0);
+      this.bossHpFillGfx.fillRect(fx, fy, innerW, fh);
 
       // Segment tick notches every 35px
-      this.bossHpFillGfx.fillStyle(0x2e050f, 0.65);
+      this.bossHpFillGfx.fillStyle(0x000000, 1.0);
       for (let s = 35; s < innerW; s += 35) {
-        this.bossHpFillGfx.fillRect(fx + s, fy, 1, fh);
+        this.bossHpFillGfx.fillRect(fx + s, fy, 2, fh);
       }
     }
 
     // 3. HP Text Readout
     if (this.bossHpText) {
       this.bossHpText.setText(`${Math.max(0, Math.ceil(currentHp))} / ${maxHp}`);
-      if (frac <= 0.25) {
-        this.bossHpText.setColor('#ff4d4d');
-      } else {
-        this.bossHpText.setColor('#ffffff');
-      }
+      this.bossHpText.setColor('#ffffff');
+      this.bossHpText.setStroke('#000000', 3);
     }
   }
 
@@ -874,28 +835,20 @@ export class GameScene extends Phaser.Scene {
     const slotCenterX = slotX + slotW / 2;  // ~294
     const slotCenterY = slotY + slotH / 2;  // ~88
 
-    // Center the slot horizontally on screen, and place slot near bottom (height - 38)
-    const screenX = Math.round(width / 2 - slotCenterX); // ~346
-    const screenY = Math.round(height - 38 - slotCenterY); // ~594
+    const frameH = Math.round(724 * scale); // ~167
+
+    // Center horizontally and push bar up so bottom filigree sits 18px above screen bottom (not cut off)
+    const screenX = Math.round(width / 2 - slotCenterX);
+    const screenY = Math.round(height - 18 - frameH);
 
     const container = this.add.container(toCamX(screenX), toCamY(screenY));
     this.uContainer = container;
     container.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
 
-    // Decorative top crest title
-    this.uTitleText = this.add.text(slotCenterX, slotY - 14, '❖   CELESTIAL NOVA   ❖', {
-      fontFamily: '"Cinzel", "Georgia", serif',
-      fontSize: '11px',
-      fontStyle: 'bold',
-      color: '#c7d2fe',
-      letterSpacing: 3,
-    }).setOrigin(0.5, 0.5);
-    this.uTitleText.setShadow(0, 1, '#1e3a8a', 4, true, true);
-
     // 1. Graphics for fill, background & glow (drawn behind the ornate frame)
     this.uBarGfx = this.add.graphics();
 
-    // 2. Ornate frame image (drawn on top of graphics so bronze filigree & gems overlay the fill)
+    // 2. Ornate frame image (drawn on top of graphics)
     this.uFrameImage = this.add.image(0, 0, 'ultimate_bar')
       .setOrigin(0, 0)
       .setScale(scale);
@@ -905,9 +858,10 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '15px',
       fontStyle: 'bold',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
     }).setOrigin(0.5, 0.5);
-    this.uBadgeText.setShadow(0, 0, '#38bdf8', 8, true, true);
 
     // 4. Status / readout text centered in the transparent slot
     this.uText = this.add.text(slotCenterX, slotCenterY, '', {
@@ -915,10 +869,12 @@ export class GameScene extends Phaser.Scene {
       fontSize: '10px',
       fontStyle: 'bold',
       color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 1,
     }).setOrigin(0.5, 0.5);
 
-    container.add([this.uTitleText, this.uBarGfx, this.uFrameImage, this.uBadgeText, this.uText]);
+    container.add([this.uBarGfx, this.uFrameImage, this.uBadgeText, this.uText]);
 
     this.updateUBar();
   }
@@ -949,72 +905,44 @@ export class GameScene extends Phaser.Scene {
 
     // 1. Outer Backing Glow / Plate (behind frame)
     if (isReady) {
-      // Brilliant pulsating cyan & gold outer aura behind the orb & slot
-      this.uBarGfx.fillStyle(0x06b6d4, 0.22);
+      // Crisp white highlight aura behind orb medallion & slot
+      this.uBarGfx.fillStyle(0xffffff, 0.22);
       this.uBarGfx.fillCircle(orbX, orbY, 44);
-      this.uBarGfx.fillStyle(0x38bdf8, 0.28);
-      this.uBarGfx.fillRoundedRect(slotX - 4, slotY - 4, slotW + 8, slotH + 8, 4);
+      this.uBarGfx.fillStyle(0xffffff, 0.25);
+      this.uBarGfx.fillRoundedRect(slotX - 3, slotY - 3, slotW + 6, slotH + 6, 4);
 
-      if (this.uTitleText) {
-        this.uTitleText.setColor('#ffd700');
-        this.uTitleText.setShadow(0, 0, '#38bdf8', 12, true, true);
-      }
       if (this.uBadgeText) {
         this.uBadgeText.setColor('#ffffff');
-        this.uBadgeText.setShadow(0, 0, '#ffd700', 10, true, true);
+        this.uBadgeText.setStroke('#000000', 3);
+        this.uBadgeText.setShadow(0, 0, '#ffffff', 8, true, true);
       }
     } else {
-      if (this.uTitleText) {
-        this.uTitleText.setColor('#93c5fd');
-        this.uTitleText.setShadow(0, 1, '#1e3a8a', 4, true, true);
-      }
       if (this.uBadgeText) {
-        this.uBadgeText.setColor('#93c5fd');
-        this.uBadgeText.setShadow(0, 0, '#000000', 4, false, false);
+        this.uBadgeText.setColor('#ffffff');
+        this.uBadgeText.setStroke('#000000', 3);
+        this.uBadgeText.setShadow(0, 0, '#000000', 0, false, false);
       }
     }
 
-    // 2. Dark Slot Inset Background (under the transparent cutout)
-    this.uBarGfx.fillStyle(0x030712, 0.95);
+    // 2. Pure Black Slot Inset Background (under the transparent cutout)
+    this.uBarGfx.fillStyle(0x000000, 1.0);
     this.uBarGfx.fillRect(slotX, slotY, slotW, slotH);
 
-    // 3. Pixelated Shaded Blue Fill
+    // 3. Pixelated Solid White Fill with Black Notches
     const innerW = Math.round(slotW * frac);
     if (innerW > 0) {
       const fx = slotX;
       const fy = slotY;
       const fh = slotH;
 
-      if (isReady) {
-        // Celestial Incandescent Cyan/White Fill (Ready state)
-        this.uBarGfx.fillStyle(0xffffff, 0.98);
-        this.uBarGfx.fillRect(fx, fy, innerW, 2);
-        this.uBarGfx.fillStyle(0xa5f3fc, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 2, innerW, 4);
-        this.uBarGfx.fillStyle(0x22d3ee, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 6, innerW, 4);
-        this.uBarGfx.fillStyle(0x0ea5e9, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 10, innerW, 4);
-        this.uBarGfx.fillStyle(0x0284c7, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 14, innerW, Math.max(1, fh - 14));
-      } else {
-        // Charging / Cooldown: Rich Electric Blue Shading
-        this.uBarGfx.fillStyle(0xe0f2fe, 0.92);
-        this.uBarGfx.fillRect(fx, fy, innerW, 2);
-        this.uBarGfx.fillStyle(0x38bdf8, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 2, innerW, 4);
-        this.uBarGfx.fillStyle(0x0284c7, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 6, innerW, 4);
-        this.uBarGfx.fillStyle(0x0369a1, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 10, innerW, 4);
-        this.uBarGfx.fillStyle(0x075985, 1.0);
-        this.uBarGfx.fillRect(fx, fy + 14, innerW, Math.max(1, fh - 14));
-      }
+      // Solid pure white ink fill
+      this.uBarGfx.fillStyle(0xffffff, 1.0);
+      this.uBarGfx.fillRect(fx, fy, innerW, fh);
 
-      // Vertical tick notches every 25px
-      this.uBarGfx.fillStyle(0x020d1c, 0.55);
+      // Vertical black tick notches every 25px
+      this.uBarGfx.fillStyle(0x000000, 1.0);
       for (let s = 25; s < innerW; s += 25) {
-        this.uBarGfx.fillRect(fx + s, fy, 1, fh);
+        this.uBarGfx.fillRect(fx + s, fy, 2, fh);
       }
     }
 
@@ -1022,18 +950,21 @@ export class GameScene extends Phaser.Scene {
     if (isReady) {
       this.uText.setText('✦   NOVA READY — PRESS [U]   ✦');
       this.uText.setColor('#ffffff');
+      this.uText.setStroke('#000000', 3);
       this.uText.setFontSize('10.5px');
-      this.uText.setShadow(0, 0, '#38bdf8', 10, true, true);
+      this.uText.setShadow(0, 0, '#ffffff', 6, true, true);
     } else if (isOnCooldown) {
       this.uText.setText(`RECHARGING  ✦  ${this.cooldownU.toFixed(1)}s`);
-      this.uText.setColor('#93c5fd');
+      this.uText.setColor('#ffffff');
+      this.uText.setStroke('#000000', 3);
       this.uText.setFontSize('10px');
-      this.uText.setShadow(0, 1, '#000000', 4, false, false);
+      this.uText.setShadow(0, 0, '#000000', 0, false, false);
     } else {
       this.uText.setText(`NOVA  ✦  ${Math.round(this.pointsTowardsU).toLocaleString()} / ${this.REQ_POINTS_U.toLocaleString()} PTS`);
-      this.uText.setColor('#94a3b8');
+      this.uText.setColor('#ffffff');
+      this.uText.setStroke('#000000', 3);
       this.uText.setFontSize('10px');
-      this.uText.setShadow(0, 1, '#000000', 4, false, false);
+      this.uText.setShadow(0, 0, '#000000', 0, false, false);
     }
   }
 
@@ -1061,15 +992,15 @@ export class GameScene extends Phaser.Scene {
     const panelH = 510;
 
     const panelGfx = this.add.graphics();
-    panelGfx.fillStyle(0x08060e, 0.96);
+    panelGfx.fillStyle(0x000000, 0.96);
     panelGfx.fillRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 8);
 
-    panelGfx.fillStyle(0x130e1d, 0.65);
+    panelGfx.fillStyle(0x000000, 0.85);
     panelGfx.fillRoundedRect(-panelW / 2 + 6, -panelH / 2 + 6, panelW - 12, panelH - 12, 6);
 
-    panelGfx.lineStyle(2, 0xd4af37, 1.0);
+    panelGfx.lineStyle(2, 0xffffff, 1.0);
     panelGfx.strokeRoundedRect(-panelW / 2, -panelH / 2, panelW, panelH, 8);
-    panelGfx.lineStyle(1, 0x5a482b, 0.75);
+    panelGfx.lineStyle(1, 0xffffff, 0.45);
     panelGfx.strokeRoundedRect(-panelW / 2 + 4, -panelH / 2 + 4, panelW - 8, panelH - 8, 6);
 
     // Corner rivets
@@ -1079,13 +1010,13 @@ export class GameScene extends Phaser.Scene {
       [-panelW / 2 + 10, panelH / 2 - 10],
       [panelW / 2 - 10, panelH / 2 - 10],
     ];
-    panelGfx.fillStyle(0xffe484, 1.0);
+    panelGfx.fillStyle(0xffffff, 1.0);
     for (const [cx, cy] of corners) {
       panelGfx.fillCircle(cx, cy, 2.5);
     }
 
     // Vertical divider line
-    panelGfx.lineStyle(1, 0x3d3047, 0.8);
+    panelGfx.lineStyle(1, 0xffffff, 0.6);
     panelGfx.lineBetween(0, -panelH / 2 + 80, 0, panelH / 2 - 68);
 
     // Top Header
@@ -1093,15 +1024,18 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
       fontSize: '25px',
       fontStyle: 'bold',
-      color: '#f6ebd2',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 4,
     }).setOrigin(0.5, 0.5);
-    titleText.setShadow(0, 2, '#ca8328', 10, true, true);
 
     const subText = this.add.text(0, -panelH / 2 + 62, 'ANCIENT COMBAT ARTS & SACRED COMMANDS', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '11px',
-      color: '#a39886',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 3,
     }).setOrigin(0.5, 0.5);
 
@@ -1115,7 +1049,9 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 1,
     });
 
@@ -1133,7 +1069,9 @@ export class GameScene extends Phaser.Scene {
       const t = this.add.text(colLeftX, curY, `[ ${item.key} ]  ${item.title}\n   ↳ ${item.desc}`, {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '11px',
-        color: '#e2d9c8',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2,
         lineSpacing: 3,
       });
       leftTextObjs.push(t);
@@ -1145,7 +1083,9 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#67e8f9',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 1,
     });
     leftTextObjs.push(leftHeader2);
@@ -1160,7 +1100,9 @@ export class GameScene extends Phaser.Scene {
       const t = this.add.text(colLeftX, curY, `[ ${item.key} ]  ${item.title}\n   ↳ ${item.desc}`, {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '11px',
-        color: '#bae6fd',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2,
         lineSpacing: 3,
       });
       leftTextObjs.push(t);
@@ -1172,7 +1114,9 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 1,
     });
 
@@ -1191,7 +1135,9 @@ export class GameScene extends Phaser.Scene {
       const t = this.add.text(colRightX, curRightY, `[ ${item.key} ]  ${item.title}\n   ↳ ${item.desc}`, {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '11px',
-        color: '#e2d9c8',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2,
         lineSpacing: 3,
       });
       rightTextObjs.push(t);
@@ -1203,7 +1149,9 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#f87171',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 1,
     });
     rightTextObjs.push(rightHeader2);
@@ -1212,7 +1160,9 @@ export class GameScene extends Phaser.Scene {
     const veilText = this.add.text(colRightX, curRightY, '✦ Slaying shadow monsters restores radiance (+%).\n✦ Shadows roaming the field deepen the darkness.\n   Purge the darkness before the ruins fall!', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '10.5px',
-      color: '#d4cebe',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       lineSpacing: 3,
     });
     rightTextObjs.push(veilText);
@@ -1224,16 +1174,18 @@ export class GameScene extends Phaser.Scene {
 
     const btnContainer = this.add.container(0, btnY);
     const btnGfx = this.add.graphics();
-    btnGfx.fillStyle(0x0e111d, 1.0);
+    btnGfx.fillStyle(0x000000, 1.0);
     btnGfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
-    btnGfx.lineStyle(1.5, 0xd4af37, 1.0);
+    btnGfx.lineStyle(1.5, 0xffffff, 1.0);
     btnGfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
 
     const btnText = this.add.text(0, 0, '✦   UNDERSTOOD   ✦', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
       fontStyle: 'bold',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 3,
     }).setOrigin(0.5, 0.5);
 
@@ -1260,21 +1212,23 @@ export class GameScene extends Phaser.Scene {
 
     hitZone.on('pointerover', () => {
       btnGfx.clear();
-      btnGfx.fillStyle(0x1a2138, 1.0);
+      btnGfx.fillStyle(0xffffff, 1.0);
       btnGfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
-      btnGfx.lineStyle(2, 0xffe484, 1.0);
+      btnGfx.lineStyle(2, 0xffffff, 1.0);
       btnGfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
-      btnText.setColor('#ffffff');
-      btnText.setShadow(0, 0, '#ffd700', 8, true, true);
+      btnText.setColor('#000000');
+      btnText.setStroke('#ffffff', 0);
+      btnText.setShadow(0, 0, '#ffffff', 8, true, true);
     });
 
     hitZone.on('pointerout', () => {
       btnGfx.clear();
-      btnGfx.fillStyle(0x0e111d, 1.0);
+      btnGfx.fillStyle(0x000000, 1.0);
       btnGfx.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
-      btnGfx.lineStyle(1.5, 0xd4af37, 1.0);
+      btnGfx.lineStyle(1.5, 0xffffff, 1.0);
       btnGfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
-      btnText.setColor('#ffd700');
+      btnText.setColor('#ffffff');
+      btnText.setStroke('#000000', 2);
       btnText.setShadow(0, 0, '#000000', 0, false, false);
     });
 
@@ -1325,7 +1279,9 @@ export class GameScene extends Phaser.Scene {
         fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
         fontSize: '68px',
         fontStyle: 'bold',
-        color: '#f5ebd0',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 4,
       })
       .setOrigin(0.5)
       .setScale(1 / z)
@@ -1333,13 +1289,14 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 1)
       .setAlpha(0);
-    title.setShadow(0, 4, '#ca8328', 14, true, true);
 
     const sub = this.add
       .text(width / 2, toCamY(height * 0.42 + 56), this.level.subtitle, {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '20px',
-        color: '#c2b395',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2,
       })
       .setOrigin(0.5)
       .setScale(1 / z)
@@ -1373,17 +1330,18 @@ export class GameScene extends Phaser.Scene {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '17px',
         fontStyle: 'bold',
-        color: '#f5ebd0',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 3,
         letterSpacing: 4,
       })
       .setOrigin(0, 0)
       .setScale(1 / z)
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 10)
-      .setAlpha(0.92);
-    this.cornerWaveText.setShadow(0, 2, '#382a1a', 8, true, true);
+      .setAlpha(0.95);
 
-    // --- MEDIEVAL FANTASY POINTS & CURRENCY BAR (Top-Right, inspired by references.png) ---
+    // --- MEDIEVAL FANTASY POINTS & CURRENCY BAR (Top-Right) ---
     const bannerW = 320;
     const bannerH = 46;
     this.scoreContainer = this.add.container(toCamX(width - bannerW - 28), toCamY(20));
@@ -1396,10 +1354,11 @@ export class GameScene extends Phaser.Scene {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
       fontStyle: 'bold',
-      color: '#ffd700',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
       letterSpacing: 2,
     }).setOrigin(0, 0);
-    this.scoreText.setShadow(0, 1, '#7a5a10', 4, true, true);
 
     // Secondary status line (Light level multiplier and ability readiness)
     const pct = Math.round(this.blackPoint * 100);
@@ -1407,7 +1366,9 @@ export class GameScene extends Phaser.Scene {
     this.scoreDetailsText = this.add.text(50, 26, `LIGHT ${sign}${pct}%  ✦  X: 0/1.5k  ❖  U: 0/7.5k`, {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '10px',
-      color: '#c2bcd0',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
       letterSpacing: 1,
     }).setOrigin(0, 0);
 
@@ -1421,8 +1382,8 @@ export class GameScene extends Phaser.Scene {
   private drawScoreBanner(w: number, h: number) {
     this.scoreBannerGfx.clear();
 
-    // Dark iron gothic banner plate with pointed diamond end caps
-    this.scoreBannerGfx.fillStyle(0x0a0812, 0.88);
+    // Dark gothic banner plate with pointed diamond end caps
+    this.scoreBannerGfx.fillStyle(0x000000, 0.90);
     this.scoreBannerGfx.beginPath();
     this.scoreBannerGfx.moveTo(0, h / 2);
     this.scoreBannerGfx.lineTo(12, 0);
@@ -1433,26 +1394,24 @@ export class GameScene extends Phaser.Scene {
     this.scoreBannerGfx.closePath();
     this.scoreBannerGfx.fillPath();
 
-    // Outer dark iron & gold rim
-    this.scoreBannerGfx.lineStyle(1.5, 0x322842, 1.0);
+    // Crisp white border
+    this.scoreBannerGfx.lineStyle(1.5, 0xffffff, 1.0);
     this.scoreBannerGfx.strokePath();
-    this.scoreBannerGfx.lineStyle(1, 0x8a7042, 0.85);
+    this.scoreBannerGfx.lineStyle(1, 0xffffff, 0.4);
     this.scoreBannerGfx.strokePath();
 
-    // Golden Coin Medallion on the left
+    // Medallion on the left
     const coinCX = 26;
     const coinCY = h / 2;
     const coinR = 14;
 
-    this.scoreBannerGfx.fillStyle(0x855816, 1.0);
+    this.scoreBannerGfx.fillStyle(0x000000, 1.0);
     this.scoreBannerGfx.fillCircle(coinCX, coinCY, coinR + 1);
-    this.scoreBannerGfx.fillStyle(0xd4af37, 1.0);
-    this.scoreBannerGfx.fillCircle(coinCX, coinCY, coinR);
-    this.scoreBannerGfx.lineStyle(1, 0xffe484, 0.9);
-    this.scoreBannerGfx.strokeCircle(coinCX, coinCY, coinR - 2);
+    this.scoreBannerGfx.lineStyle(1.5, 0xffffff, 1.0);
+    this.scoreBannerGfx.strokeCircle(coinCX, coinCY, coinR);
 
-    // Embossed star diamond inside coin
-    this.scoreBannerGfx.fillStyle(0x613f0c, 1.0);
+    // Embossed star diamond inside coin (pure white)
+    this.scoreBannerGfx.fillStyle(0xffffff, 1.0);
     this.scoreBannerGfx.beginPath();
     this.scoreBannerGfx.moveTo(coinCX, coinCY - 6);
     this.scoreBannerGfx.lineTo(coinCX + 5, coinCY);
@@ -1460,10 +1419,6 @@ export class GameScene extends Phaser.Scene {
     this.scoreBannerGfx.lineTo(coinCX - 5, coinCY);
     this.scoreBannerGfx.closePath();
     this.scoreBannerGfx.fillPath();
-
-    // Specular highlight dot on coin
-    this.scoreBannerGfx.fillStyle(0xffffff, 0.8);
-    this.scoreBannerGfx.fillCircle(coinCX - 4, coinCY - 4, 1.5);
   }
 
   // -----------------------------------------------------------------
@@ -1475,7 +1430,7 @@ export class GameScene extends Phaser.Scene {
     const toCamX = (x: number) => width / 2 + (x - width / 2) / z;
     const toCamY = (y: number) => height / 2 + (y - height / 2) / z;
 
-    // 6 ability rows: LMB, Q, E, V, R, X
+    // 6 ability rows: SPACE, Q, E, V, R, X
     const rowH = 22;
     const rowGap = 4;
     const rowsCount = 6;
@@ -1486,13 +1441,13 @@ export class GameScene extends Phaser.Scene {
     this.cooldownContainer = container;
     container.setScale(1 / z).setScrollFactor(0).setDepth(DEPTH.screen + 10);
 
-    // Subtle dark gothic backing plate
+    // Subtle dark gothic backing plate in crisp black and white
     const bgGfx = this.add.graphics();
-    bgGfx.fillStyle(0x06040a, 0.82);
+    bgGfx.fillStyle(0x000000, 0.90);
     bgGfx.fillRoundedRect(-8, -6, totalW + 16, totalH + 12, 6);
-    bgGfx.lineStyle(1.5, 0x221a2c, 0.9);
+    bgGfx.lineStyle(1.5, 0xffffff, 1.0);
     bgGfx.strokeRoundedRect(-8, -6, totalW + 16, totalH + 12, 6);
-    bgGfx.lineStyle(1, 0x483a22, 0.5);
+    bgGfx.lineStyle(1, 0xffffff, 0.4);
     bgGfx.strokeRoundedRect(-9, -7, totalW + 18, totalH + 14, 7);
 
     const barsGfx = this.add.graphics();
@@ -1538,7 +1493,9 @@ export class GameScene extends Phaser.Scene {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: def.key === 'SPACE' ? '8.5px' : '11px',
         fontStyle: 'bold',
-        color: '#d4cebe',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2,
       }).setOrigin(0.5, 0.5);
 
       // Countdown / status text
@@ -1546,7 +1503,9 @@ export class GameScene extends Phaser.Scene {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '10px',
         fontStyle: 'bold',
-        color: '#ffd700',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2,
       }).setOrigin(0.5, 0.5);
 
       container.add([iconObj, keyTxt, statusTxt]);
@@ -1630,33 +1589,29 @@ export class GameScene extends Phaser.Scene {
       }
 
       // 1. Icon frame backing & border
-      gfx.fillStyle(0x06050b, 1.0);
+      gfx.fillStyle(0x000000, 1.0);
       gfx.fillRect(0, y + 1, 20, 20);
-      gfx.lineStyle(1, isReady ? 0xd4af37 : 0x2a2336, 1.0);
+      gfx.lineStyle(1.5, isReady ? 0xffffff : 0x555555, 1.0);
       gfx.strokeRect(0, y + 1, 20, 20);
 
-      // Icon tint / alpha when on cooldown
+      // Icon alpha when on cooldown (leave icons untouched as requested)
       if (row.icon) {
         if (isReady) {
           row.icon.setAlpha(1.0);
           if ('clearTint' in row.icon) (row.icon as Phaser.GameObjects.Image).clearTint();
         } else {
-          row.icon.setAlpha(0.65);
-          if ('setTint' in row.icon) (row.icon as Phaser.GameObjects.Image).setTint(0x7a7485);
+          row.icon.setAlpha(0.40);
+          if ('clearTint' in row.icon) (row.icon as Phaser.GameObjects.Image).clearTint();
         }
       }
 
       // 2. Bar slot frame
-      gfx.fillStyle(0x07060f, 1.0);
+      gfx.fillStyle(0x000000, 1.0);
       gfx.fillRect(barX, barY, barW, barH);
-      gfx.lineStyle(1, isReady ? 0x8a7032 : 0x221c2e, 1.0);
+      gfx.lineStyle(1, isReady ? 0xffffff : 0x555555, 1.0);
       gfx.strokeRect(barX, barY, barW, barH);
 
-      // Inner shadow
-      gfx.fillStyle(0x030206, 0.7);
-      gfx.fillRect(barX + 1, barY + 1, barW - 2, 1);
-
-      // 3. Pixelated shaded fill
+      // 3. Pixelated solid white fill with black notch lines
       const maxInnerW = barW - 2;
       const innerW = Math.round(maxInnerW * frac);
       if (innerW > 0) {
@@ -1664,57 +1619,23 @@ export class GameScene extends Phaser.Scene {
         const fy = barY + 1;
         const fh = barH - 2; // 8px
 
-        if (isReady) {
-          // Brilliant golden fill
-          gfx.fillStyle(0xfff3a8, 0.95);
-          gfx.fillRect(fx, fy, innerW, 2);
-          gfx.fillStyle(0xf59e0b, 1.0);
-          gfx.fillRect(fx, fy + 2, innerW, 3);
-          gfx.fillStyle(0xd97706, 1.0);
-          gfx.fillRect(fx, fy + 5, innerW, 2);
-          gfx.fillStyle(0x78350f, 1.0);
-          gfx.fillRect(fx, fy + 7, innerW, 1);
-        } else if (isLocked) {
-          // Points charging towards X (Amethyst / Violet)
-          gfx.fillStyle(0xf3e8ff, 0.90);
-          gfx.fillRect(fx, fy, innerW, 2);
-          gfx.fillStyle(0xa855f7, 1.0);
-          gfx.fillRect(fx, fy + 2, innerW, 3);
-          gfx.fillStyle(0x7e22ce, 1.0);
-          gfx.fillRect(fx, fy + 5, innerW, 2);
-          gfx.fillStyle(0x3b0764, 1.0);
-          gfx.fillRect(fx, fy + 7, innerW, 1);
-        } else {
-          // Ability recharging on cooldown (Electric cyan/blue)
-          gfx.fillStyle(0xbae6fd, 0.90);
-          gfx.fillRect(fx, fy, innerW, 2);
-          gfx.fillStyle(0x0284c7, 1.0);
-          gfx.fillRect(fx, fy + 2, innerW, 3);
-          gfx.fillStyle(0x0369a1, 1.0);
-          gfx.fillRect(fx, fy + 5, innerW, 2);
-          gfx.fillStyle(0x0c4a6e, 1.0);
-          gfx.fillRect(fx, fy + 7, innerW, 1);
-        }
+        // Solid pure white fill matching ink drawings
+        gfx.fillStyle(0xffffff, 1.0);
+        gfx.fillRect(fx, fy, innerW, fh);
 
         // Notch lines every 20px
-        gfx.fillStyle(0x000000, 0.45);
+        gfx.fillStyle(0x000000, 1.0);
         for (let s = 20; s < innerW; s += 20) {
-          gfx.fillRect(fx + s, fy, 1, fh);
+          gfx.fillRect(fx + s, fy, 2, fh);
         }
       }
 
       // 4. Update texts
       row.statusText.setText(statusStr);
-      if (isReady) {
-        row.keyText.setColor('#ffd700');
-        row.statusText.setColor('#ffd700');
-      } else if (isLocked) {
-        row.keyText.setColor('#6b6475');
-        row.statusText.setColor('#ca8228');
-      } else {
-        row.keyText.setColor('#94a3b8');
-        row.statusText.setColor('#74b9ff');
-      }
+      row.keyText.setColor('#ffffff');
+      row.statusText.setColor('#ffffff');
+      row.keyText.setAlpha(isReady ? 1.0 : 0.6);
+      row.statusText.setAlpha(isReady ? 1.0 : 0.8);
     });
 
     this.updateUBar();
@@ -1739,7 +1660,9 @@ export class GameScene extends Phaser.Scene {
         fontFamily: '"Cinzel Decorative", "Cinzel", "Georgia", serif',
         fontSize: '68px',
         fontStyle: 'bold',
-        color: '#f5ebd0',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 5,
       })
       .setOrigin(0.5)
       .setScale(1 / z)
@@ -1747,7 +1670,6 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 2)
       .setAlpha(0);
-    this.waveAnnounceTitle.setShadow(0, 4, '#ca8328', 14, true, true);
 
     const targets: Phaser.GameObjects.Text[] = [this.waveAnnounceTitle];
 
@@ -1756,7 +1678,9 @@ export class GameScene extends Phaser.Scene {
         .text(width / 2, toCamY(height * 0.42 + 56), subText, {
           fontFamily: '"Cinzel", "Georgia", serif',
           fontSize: '20px',
-          color: '#c2b395',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 3,
         })
         .setOrigin(0.5)
         .setScale(1 / z)
@@ -2195,7 +2119,9 @@ export class GameScene extends Phaser.Scene {
         fontFamily: '"Cinzel", "Georgia", serif',
         fontSize: '15px',
         fontStyle: 'bold',
-        color: '#ffd700',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 3,
       })
       .setOrigin(1, 0)
       .setScale(1 / z)
@@ -2203,7 +2129,6 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(DEPTH.screen + 10)
       .setAlpha(0);
-    popupText.setShadow(0, 0, '#ca8328', 8, true, true);
 
     // Quick smooth fade in
     this.tweens.add({
