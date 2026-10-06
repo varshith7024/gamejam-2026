@@ -26,6 +26,5 @@ https://www.youtube.com/watch?v=n451uigPWdk
 todo:
 level transitions
 cutscenes
-level 3 map + enemies
-better looking texture
+level 3 enemies
 remove dev stuff
