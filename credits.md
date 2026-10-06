@@ -28,6 +28,3 @@ Code was written by Antigravity + Gemini and Claude
 Maps, some ability icons were generated with AI
 Boss sprite animations were generated with https://www.autosprite.io/
 
-todo:
-show points
-remove dev stuff
