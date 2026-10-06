@@ -27,4 +27,5 @@ todo:
 level transitions
 cutscenes
 level 3 enemies
+show points
 remove dev stuff
