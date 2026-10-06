@@ -1199,7 +1199,7 @@ export class GameScene extends Phaser.Scene {
       { key: 'W, A, S, D', title: 'Locomotion', desc: 'Move in 8 directions through the ruins.' },
       { key: 'SHIFT', title: 'Sprint', desc: 'Hold while running to surge into full sprint.' },
       { key: 'SPACE', title: 'Evasive Dash', desc: 'Quick roll with invulnerability (i-frames).' },
-      { key: 'C', title: 'Shield Guard', desc: 'Absorb and deflect incoming frontal attacks.' },
+      { key: 'C', title: 'Crouch', desc: 'Crouch low to stealthily navigate the ruins.' },
     ];
 
     let curY = startY + 24;
@@ -2969,6 +2969,9 @@ export class GameScene extends Phaser.Scene {
     this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyU = kb.addKey(Phaser.Input.Keyboard.KeyCodes.U);
 
+    // Disable browser right click context menu
+    this.input.mouse?.disableContextMenu();
+
     // Left Click Attack
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.isDead) return;
@@ -3267,8 +3270,6 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
-
-    this.handleShieldBlock();
   }
 
   private canTriggerSpecialAction(): boolean {
@@ -3789,21 +3790,6 @@ export class GameScene extends Phaser.Scene {
 
     if (toRemove.length > 0) {
       this.activeShockwaves = this.activeShockwaves.filter((r) => !toRemove.includes(r));
-    }
-  }
-
-  private handleShieldBlock() {
-    const pointer = this.input.activePointer;
-
-    if (pointer.rightButtonDown()) {
-      if (this.currentAction !== 'block') {
-        this.currentAction = 'block';
-        this.playDirectional('ShieldBlockStart', this.currentAimDir, false);
-      } else {
-        this.playDirectional('ShieldBlockMid', this.currentAimDir, true);
-      }
-    } else if (this.currentAction === 'block') {
-      this.currentAction = 'idle';
     }
   }
 

@@ -111,10 +111,6 @@ export const LEVEL3: LevelData = {
     { key: 'stairs_curved_grand', x: 1070, y: 195, scale: 0.5 },
     { key: 'portal_arch_grand', x: 1070, y: 155, scale: 0.5 },
 
-    // Flanking the central floor: glowing pedestal braziers with climbing root vines
-    { key: 'brazier_pedestal_large', x: 600, y: 475, scale: 0.65, footprint: [16, 9] },
-    { key: 'brazier_pedestal_large', x: 980, y: 475, scale: 0.65, footprint: [16, 9] },
-
     // South entrance: smaller carved braziers flanking the walkway
     { key: 'brazier_pedestal_small', x: 740, y: 850, scale: 0.6, footprint: [14, 8] },
     { key: 'brazier_pedestal_small', x: 840, y: 850, scale: 0.6, footprint: [14, 8] },
@@ -137,26 +133,11 @@ export const LEVEL3: LevelData = {
   ],
 
   /**
-   * Navigation clearance rings around interior props (central braziers, crystal spires, pillars).
+   * Navigation clearance rings around interior props (crystal spires, pillars, braziers).
    * Enemies smoothly route around each individual prop instead of getting caught behind them.
-   * Rendered as distinct yellow rings around each prop in debug overlay (press G).
    */
   navRings: [
-    // 1. Central West Brazier (600, 475)
-    [
-      [636, 475], // East
-      [600, 499], // South
-      [564, 475], // West
-      [600, 451], // North
-    ],
-    // 2. Central East Brazier (980, 475)
-    [
-      [1016, 475], // East
-      [980, 499],  // South
-      [944, 475],  // West
-      [980, 451],  // North
-    ],
-    // 3. West Terrace Giant Crystal (370, 580)
+    // 1. West Terrace Giant Crystal (370, 580)
     [
       [406, 580], // East
       [370, 604], // South
