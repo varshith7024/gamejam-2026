@@ -136,17 +136,69 @@ export const LEVEL3: LevelData = {
     { key: 'floor_slab_cracked_sw', x: 330, y: 760, scale: 0.45, flat: true },
   ],
 
-  // Navigation clearance waypoints around interior props (central braziers & terraces)
-  navWaypoints: [
-    p(790, 380),  // North clearance
-    p(980, 390),  // NE clearance around East brazier
-    p(1140, 520), // East terrace clearance
-    p(980, 550),  // SE clearance around East brazier
-    p(790, 580),  // South clearance
-    p(600, 550),  // SW clearance around West brazier
-    p(440, 520),  // West terrace clearance
-    p(600, 390),  // NW clearance around West brazier
-  ].map((pt) => [pt.x, pt.y] as Pt),
+  /**
+   * Navigation clearance rings around interior props (central braziers, crystal spires, pillars).
+   * Enemies smoothly route around each individual prop instead of getting caught behind them.
+   * Rendered as distinct yellow rings around each prop in debug overlay (press G).
+   */
+  navRings: [
+    // 1. Central West Brazier (600, 475)
+    [
+      [636, 475], // East
+      [600, 499], // South
+      [564, 475], // West
+      [600, 451], // North
+    ],
+    // 2. Central East Brazier (980, 475)
+    [
+      [1016, 475], // East
+      [980, 499],  // South
+      [944, 475],  // West
+      [980, 451],  // North
+    ],
+    // 3. West Terrace Giant Crystal (370, 580)
+    [
+      [406, 580], // East
+      [370, 604], // South
+      [334, 580], // West
+      [370, 556], // North
+    ],
+    // 4. East Terrace Rooted Crystal Spire (1220, 580)
+    [
+      [1258, 580], // East
+      [1220, 605], // South
+      [1182, 580], // West
+      [1220, 555], // North
+    ],
+    // 5. East Terrace Crystal Altar (1180, 360)
+    [
+      [1216, 360], // East
+      [1180, 384], // South
+      [1144, 360], // West
+      [1180, 336], // North
+    ],
+    // 6. North Runic Pillar (880, 220)
+    [
+      [918, 220], // East
+      [880, 245], // South
+      [842, 220], // West
+      [880, 195], // North
+    ],
+    // 7. South Entrance West Brazier (740, 850)
+    [
+      [774, 850], // East
+      [740, 873], // South
+      [706, 850], // West
+      [740, 827], // North
+    ],
+    // 8. South Entrance East Brazier (840, 850)
+    [
+      [874, 850], // East
+      [840, 873], // South
+      [806, 850], // West
+      [840, 827], // North
+    ],
+  ] as Pt[][],
 
   // Spawn locations at the gateways and stairs around the abyss arena
   entries: [
