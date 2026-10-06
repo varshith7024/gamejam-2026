@@ -12,7 +12,7 @@ npm run zip      # build + negative-space-web.zip for itch.io upload
 Requires Node.js 20 LTS and Git.
 
 ## Controls
-- Its in CONTROLS.MD 
+- See CONTROLS.MD 
 
 ## Team SuperThick
 - Varshith - indieconnect.in/dev/varshithanthagiri
