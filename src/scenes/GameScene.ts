@@ -199,6 +199,7 @@ export class GameScene extends Phaser.Scene {
   private isPausedAfterBoss = false;
   private cutscene2Triggered = false;
   private bossMinionTimers: Phaser.Time.TimerEvent[] = [];
+  private bossClimaxTimers: Phaser.Time.TimerEvent[] = [];
 
   // Controls Tutorial Popup (Level 1)
   private controlsPopupContainer?: Phaser.GameObjects.Container;
@@ -330,6 +331,8 @@ export class GameScene extends Phaser.Scene {
     this.cutscene2Triggered = false;
     this.bossMinionTimers.forEach((t) => t.remove());
     this.bossMinionTimers = [];
+    this.bossClimaxTimers.forEach((t) => t.remove());
+    this.bossClimaxTimers = [];
     this.bossHpBgGfx = undefined;
     this.bossHpFillGfx = undefined;
     this.bossHpText = undefined;
@@ -2541,27 +2544,17 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    if (this.bossHealthContainer) {
-      this.tweens.add({
-        targets: this.bossHealthContainer,
-        alpha: 0,
-        duration: 1200,
-        ease: 'Quad.easeOut',
-      });
-    }
-
-    if (this.cornerWaveText) {
-      this.cornerWaveText.setText('');
-    }
-
+    // Stop heartbeat immediately
     if (this.heartbeatSound && this.heartbeatSound.isPlaying) {
       this.heartbeatSound.stop();
     }
+
+    // Swiftly fade out battle music
     if (this.battleMusic && this.battleMusic.isPlaying) {
       this.tweens.add({
         targets: this.battleMusic,
         volume: 0,
-        duration: 1200,
+        duration: 800,
         onComplete: () => {
           this.battleMusic?.stop();
           this.battleMusic?.destroy();
@@ -2570,31 +2563,375 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Pause player action while screen brightens to 90% white
+    // Pause player action for cinematic sequence
     this.isPausedAfterBoss = true;
     this.currentAction = 'idle';
     this.actionVelocity.set(0, 0);
     this.playDirectional('Idle', this.currentAimDir, false);
 
-    // Smoothly and dramatically ramp light level to 90% white over 1.2 seconds
-    this.targetBlackPoint = 0.90;
-    this.tweens.add({
-      targets: this,
-      blackPoint: 0.90,
-      duration: 1200,
-      ease: 'Cubic.easeOut',
-      onUpdate: () => {
-        this.applyBlackPoint();
+    // Fade out all combat HUD elements cleanly so screen is cinematic and clutter-free
+    if (this.bossHealthContainer) {
+      this.tweens.add({
+        targets: this.bossHealthContainer,
+        alpha: 0,
+        duration: 400,
+        ease: 'Quad.easeOut',
+      });
+    }
+    if (this.healthContainer) {
+      this.tweens.add({
+        targets: this.healthContainer,
+        alpha: 0,
+        duration: 600,
+        ease: 'Quad.easeOut',
+      });
+    }
+    if (this.uContainer) {
+      this.tweens.add({
+        targets: this.uContainer,
+        alpha: 0,
+        duration: 600,
+        ease: 'Quad.easeOut',
+      });
+    }
+    if (this.cooldownContainer) {
+      this.tweens.add({
+        targets: this.cooldownContainer,
+        alpha: 0,
+        duration: 600,
+        ease: 'Quad.easeOut',
+      });
+    }
+    if (this.scoreContainer) {
+      this.tweens.add({
+        targets: this.scoreContainer,
+        alpha: 0,
+        duration: 600,
+        ease: 'Quad.easeOut',
+      });
+    }
+    if (this.cornerWaveText) {
+      this.cornerWaveText.setText('');
+    }
+    if (this.lightLevelText) {
+      this.tweens.add({
+        targets: this.lightLevelText,
+        alpha: 0,
+        duration: 600,
+        ease: 'Quad.easeOut',
+      });
+    }
+
+    // Play the full cinematic: light escaping from the boss, expanding across the whole screen, and dissolving into the comic cutscene
+    this.playBossDefeatClimax();
+  }
+
+  private playDivineLightHarmonics() {
+    try {
+      const audioCtx = (this.sound as any).context as AudioContext | undefined;
+      if (!audioCtx || audioCtx.state !== 'running') return;
+
+      const now = audioCtx.currentTime;
+      const masterGain = audioCtx.createGain();
+      masterGain.gain.setValueAtTime(0.001, now);
+      masterGain.gain.exponentialRampToValueAtTime(0.35, now + 1.2);
+      masterGain.gain.exponentialRampToValueAtTime(0.45, now + 2.4);
+      masterGain.gain.exponentialRampToValueAtTime(0.001, now + 4.2);
+      masterGain.connect(audioCtx.destination);
+
+      // Lowpass filter sweeping up like blinding light breaking into the spectrum
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(320, now);
+      filter.frequency.exponentialRampToValueAtTime(7500, now + 2.5);
+      filter.Q.value = 1.8;
+      filter.connect(masterGain);
+
+      // Chord frequencies: A maj9 ethereal celestial progression (A2, E3, A3, C#4, E4, G#4, B4)
+      const freqs = [110.0, 164.81, 220.0, 277.18, 329.63, 415.3, 493.88];
+      for (let i = 0; i < freqs.length; i++) {
+        const osc = audioCtx.createOscillator();
+        const oscGain = audioCtx.createGain();
+        osc.type = i < 2 ? 'sawtooth' : 'sine';
+        osc.frequency.setValueAtTime(freqs[i], now);
+        osc.detune.setValueAtTime((i % 2 === 0 ? 1 : -1) * 4.5, now);
+
+        oscGain.gain.setValueAtTime(0.001, now);
+        oscGain.gain.linearRampToValueAtTime((0.15 / freqs.length) * (1.2 - i * 0.08), now + 1.0);
+        oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 4.0);
+
+        osc.connect(oscGain);
+        oscGain.connect(filter);
+
+        osc.start(now);
+        osc.stop(now + 4.3);
+      }
+    } catch (e) {
+      console.warn('Divine harmonics Web Audio warning:', e);
+    }
+  }
+
+  private playBossDefeatClimax() {
+    const boss = this.bossEnemy;
+    const bx = boss ? boss.x : this.level.floorCenter.x;
+    const by = boss ? boss.y - 45 : this.level.floorCenter.y - 45;
+    const originX = boss ? boss.x : bx;
+    const originY = boss ? boss.y : by + 45;
+
+    // 1. FATAL HIT IMPACT: Visceral hit-stop, camera shake & sound
+    this.cameras.main.shake(260, 0.014);
+    this.cameras.main.zoomTo(BALANCE.level1CameraZoom * 1.15, 2600, 'Sine.easeInOut');
+
+    try {
+      this.sound.play('triggerShockwave', { volume: 0.95 });
+      this.sound.play('detonateOrb', { volume: 0.85 });
+    } catch {}
+
+    const tVictory = this.time.delayedCall(150, () => {
+      try {
+        this.sound.play('victory', { volume: 0.75 });
+      } catch {}
+    });
+    this.bossClimaxTimers.push(tVictory);
+
+    // Celestial resonance chords
+    this.playDivineLightHarmonics();
+
+    // 2. BOSS TREMOR & LIGHT BURSTING FROM CHEST (0s -> 1.5s)
+    let shakeIntensity = 3.5;
+    const shakeEvent = this.time.addEvent({
+      delay: 20,
+      loop: true,
+      callback: () => {
+        if (!boss || !boss.active) return;
+        shakeIntensity = Math.min(15, shakeIntensity + 0.12);
+        boss.x = originX + (Math.random() - 0.5) * shakeIntensity * 2;
+        boss.y = originY + (Math.random() - 0.5) * shakeIntensity * 1.5;
       },
-      onComplete: () => {
-        this.triggerCutscene2();
+    });
+    this.bossClimaxTimers.push(shakeEvent);
+
+    // Rapid strobe flashing - radiant light violently rupturing out from within his dark armor
+    let strobeWhite = true;
+    const strobeEvent = this.time.addEvent({
+      delay: 55,
+      repeat: 22,
+      callback: () => {
+        if (!boss || !boss.active) return;
+        if (strobeWhite) {
+          boss.setTintFill(0xffffff);
+        } else {
+          boss.clearTint();
+        }
+        strobeWhite = !strobeWhite;
+      },
+    });
+    this.bossClimaxTimers.push(strobeEvent);
+
+    // 3. GOD RAYS (RADIAL BEAMS OF ESCAPING LIGHT)
+    const lightRaysGfx = this.add.graphics();
+    lightRaysGfx.setDepth(99990);
+    lightRaysGfx.setBlendMode(Phaser.BlendModes.ADD);
+
+    const rayCount = 24;
+    const rays = Array.from({ length: rayCount }, (_, i) => ({
+      angle: (i / rayCount) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.04, 0.04),
+      angularWidth: Phaser.Math.FloatBetween(0.06, 0.13),
+      length: Phaser.Math.FloatBetween(280, 450),
+      speed: Phaser.Math.FloatBetween(0.12, 0.28) * (i % 2 === 0 ? 1 : -0.75),
+      color: i % 4 === 0 ? 0xfffbe6 : i % 4 === 1 ? 0xffffff : i % 4 === 2 ? 0xfffae0 : 0xfff0c8,
+      alphaBase: Phaser.Math.FloatBetween(0.45, 0.85),
+      pulseSpeed: Phaser.Math.FloatBetween(4, 9),
+    }));
+
+    const rayStartTime = this.time.now;
+    const rayDuration = 3400;
+
+    const rayUpdateEvent = this.time.addEvent({
+      delay: 16,
+      loop: true,
+      callback: () => {
+        const elapsed = this.time.now - rayStartTime;
+        const progress = Phaser.Math.Clamp(elapsed / rayDuration, 0, 1);
+
+        lightRaysGfx.clear();
+
+        // Rays expand exponentially outward to engulf the entire screen
+        const currentLength = 350 + Math.pow(progress, 1.8) * 3200;
+        const currentWidthMult = 1 + progress * 2.2;
+
+        for (const ray of rays) {
+          ray.angle += ray.speed * 0.016;
+          const w = ray.angularWidth * currentWidthMult;
+          const a1 = ray.angle - w;
+          const a2 = ray.angle + w;
+          const len = currentLength * (0.85 + 0.15 * Math.sin(ray.angle * 3));
+          const flicker = 0.8 + 0.2 * Math.sin((elapsed / 1000) * ray.pulseSpeed);
+          const alpha = ray.alphaBase * flicker;
+
+          lightRaysGfx.fillStyle(ray.color, Phaser.Math.Clamp(alpha, 0, 1));
+          lightRaysGfx.beginPath();
+          lightRaysGfx.moveTo(bx, by);
+          lightRaysGfx.lineTo(bx + Math.cos(a1) * len, by + Math.sin(a1) * len);
+          lightRaysGfx.lineTo(bx + Math.cos(a2) * len, by + Math.sin(a2) * len);
+          lightRaysGfx.closePath();
+          lightRaysGfx.fillPath();
+        }
+
+        if (progress >= 1) {
+          rayUpdateEvent.remove();
+        }
+      },
+    });
+    this.bossClimaxTimers.push(rayUpdateEvent);
+
+    // 4. CONCENTRIC EXPANDING LIGHT SHOCKWAVES
+    const shockwaveDelays = [80, 400, 850, 1350, 1900];
+    shockwaveDelays.forEach((delay, idx) => {
+      const tShock = this.time.delayedCall(delay, () => {
+        try {
+          this.sound.play('updateShockwaves', { volume: 0.55 - idx * 0.08 });
+        } catch {}
+
+        const ringGfx = this.add.graphics();
+        ringGfx.setDepth(99980);
+        ringGfx.setBlendMode(Phaser.BlendModes.ADD);
+
+        const ringData = { radius: 15, alpha: 0.95, thickness: 8 - idx };
+        const maxRadius = 1400 + idx * 450;
+        const duration = 1200 + idx * 150;
+
+        this.tweens.add({
+          targets: ringData,
+          radius: maxRadius,
+          alpha: 0,
+          thickness: 1,
+          duration,
+          ease: 'Cubic.easeOut',
+          onUpdate: () => {
+            ringGfx.clear();
+            ringGfx.lineStyle(Math.max(1, ringData.thickness), 0xffffff, ringData.alpha);
+            ringGfx.strokeEllipse(bx, by, ringData.radius * 2, ringData.radius * 1.3);
+          },
+          onComplete: () => {
+            ringGfx.destroy();
+          },
+        });
+      });
+      this.bossClimaxTimers.push(tShock);
+    });
+
+    // 5. ERUPTING SPARKS & CELESTIAL LIGHT MOTES
+    for (let i = 0; i < 65; i++) {
+      const delay = Phaser.Math.Between(80, 1600);
+      const tMote = this.time.delayedCall(delay, () => {
+        const pGfx = this.add.graphics();
+        pGfx.setDepth(99985);
+        pGfx.setBlendMode(Phaser.BlendModes.ADD);
+
+        const pRadius = Phaser.Math.FloatBetween(2.5, 6.0);
+        pGfx.fillStyle(0xffffff, 1.0);
+        pGfx.fillCircle(0, 0, pRadius);
+        pGfx.setPosition(bx, by);
+
+        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const speed = Phaser.Math.FloatBetween(180, 520);
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed * 0.7 - Phaser.Math.FloatBetween(60, 140);
+        const pDuration = Phaser.Math.Between(900, 1600);
+
+        this.tweens.add({
+          targets: pGfx,
+          x: bx + vx * (pDuration / 1000),
+          y: by + vy * (pDuration / 1000) - 80,
+          scaleX: 0.1,
+          scaleY: 0.1,
+          alpha: 0,
+          duration: pDuration,
+          ease: 'Quad.easeOut',
+          onComplete: () => pGfx.destroy(),
+        });
+      });
+      this.bossClimaxTimers.push(tMote);
+    }
+
+    // 6. BOSS DISINTEGRATION INTO RADIANT LIGHT (1.3s -> 2.4s)
+    const tDisintegrate = this.time.delayedCall(1300, () => {
+      shakeEvent.remove();
+      strobeEvent.remove();
+      if (boss && boss.active) {
+        boss.setTintFill(0xffffff);
+        this.tweens.add({
+          targets: boss,
+          scaleX: (boss.scaleX || 1.1) * 1.35,
+          scaleY: (boss.scaleY || 1.1) * 1.35,
+          y: originY - 35,
+          alpha: 0,
+          duration: 900,
+          ease: 'Cubic.easeOut',
+        });
+      }
+    });
+    this.bossClimaxTimers.push(tDisintegrate);
+
+    // 7. EXPANDING SEARING LIGHT CORE (THE BLINDING SPHERE)
+    const coreGfx = this.add.graphics();
+    coreGfx.setDepth(99995);
+    coreGfx.setBlendMode(Phaser.BlendModes.ADD);
+
+    const coreData = { radius: 30, alpha: 0.7 };
+    this.tweens.add({
+      targets: coreData,
+      radius: 3600,
+      alpha: 1.0,
+      duration: 3100,
+      ease: 'Cubic.easeIn',
+      onUpdate: () => {
+        coreGfx.clear();
+        coreGfx.fillStyle(0xffffff, Math.min(1, coreData.alpha * 1.2));
+        coreGfx.fillCircle(bx, by, coreData.radius * 0.65);
+        coreGfx.fillStyle(0xfffbe8, coreData.alpha * 0.85);
+        coreGfx.fillCircle(bx, by, coreData.radius * 0.85);
+        coreGfx.fillStyle(0xffeedd, coreData.alpha * 0.5);
+        coreGfx.fillCircle(bx, by, coreData.radius);
       },
     });
 
-    // Safety fallback timer to trigger Cutscene 2 if not triggered by light level threshold
-    this.time.delayedCall(1600, () => {
+    // 8. FULLSCREEN BLINDING WHITEOUT OVERLAY (WHOLE SCREEN GOES LIGHT)
+    const whiteScreenOverlay = this.add.rectangle(
+      0,
+      0,
+      this.scale.width,
+      this.scale.height,
+      0xffffff,
+      0,
+    );
+    whiteScreenOverlay.setOrigin(0, 0);
+    whiteScreenOverlay.setScrollFactor(0);
+    whiteScreenOverlay.setDepth(999999);
+
+    const tWhiteout = this.time.delayedCall(1600, () => {
+      this.tweens.add({
+        targets: whiteScreenOverlay,
+        fillAlpha: 1.0,
+        duration: 1500,
+        ease: 'Cubic.easeIn',
+      });
+      this.tweens.add({
+        targets: this,
+        blackPoint: 1.0,
+        duration: 1500,
+        ease: 'Cubic.easeIn',
+        onUpdate: () => this.applyBlackPoint(),
+      });
+    });
+    this.bossClimaxTimers.push(tWhiteout);
+
+    // 9. SEAMLESS HANDOFF TO CUTSCENE 2 (COMIC) AT 3.25 SECONDS
+    const tHandoff = this.time.delayedCall(3250, () => {
       this.triggerCutscene2();
     });
+    this.bossClimaxTimers.push(tHandoff);
   }
 
   private triggerCutscene2() {
@@ -2605,7 +2942,23 @@ export class GameScene extends Phaser.Scene {
     try {
       (this.sound as any).stopAll?.();
     } catch {}
-    this.scene.start('Cutscene2', { score: this.score });
+
+    // Place smooth transition veil on document.body so there is ZERO black frame during scene switch
+    let veil = document.getElementById('cutscene2-transition-veil') as HTMLDivElement | null;
+    if (!veil) {
+      veil = document.createElement('div');
+      veil.id = 'cutscene2-transition-veil';
+      veil.style.position = 'fixed';
+      veil.style.inset = '0';
+      veil.style.backgroundColor = '#ffffff';
+      veil.style.zIndex = '999999';
+      veil.style.pointerEvents = 'none';
+      veil.style.opacity = '1';
+      veil.style.transition = 'opacity 1.6s cubic-bezier(0.25, 1, 0.5, 1)';
+      document.body.appendChild(veil);
+    }
+
+    this.scene.start('Cutscene2', { score: this.score, transitionFromWhite: true });
   }
 
   private setupInput() {
@@ -2644,6 +2997,20 @@ export class GameScene extends Phaser.Scene {
     num2.on('down', () => this.scene.start('Level2'));
     const num3 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_THREE);
     num3.on('down', () => this.scene.start('Level3'));
+
+    // Debug hotkey: In Level 3 Boss chamber, press 0 to trigger fatal hit on Boss for testing
+    const key0 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
+    key0.on('down', () => {
+      if (this.level.id === 'level3' && this.bossEnemy && !this.bossEnemy.isDead) {
+        this.bossEnemy.takeDamage(this.player.x, this.player.y, this.env.area, 9999);
+      }
+    });
+    const num0 = kb.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ZERO);
+    num0.on('down', () => {
+      if (this.level.id === 'level3' && this.bossEnemy && !this.bossEnemy.isDead) {
+        this.bossEnemy.takeDamage(this.player.x, this.player.y, this.env.area, 9999);
+      }
+    });
 
     // Left Click Attack
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -2707,8 +3074,14 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const f = BALANCE.level1CameraFollow;
     const fc = this.level.floorCenter;
-    const cx = fc.x + (this.player.x - fc.x) * f;
-    const cy = fc.y + (this.player.y - fc.y) * f;
+    let targetX = this.player.x;
+    let targetY = this.player.y;
+    if (this.isPausedAfterBoss && this.bossEnemy) {
+      targetX = this.player.x * 0.35 + this.bossEnemy.x * 0.65;
+      targetY = this.player.y * 0.35 + (this.bossEnemy.y - 45) * 0.65;
+    }
+    const cx = fc.x + (targetX - fc.x) * f;
+    const cy = fc.y + (targetY - fc.y) * f;
     return {
       x: cam.clampX(cx - cam.width / 2),
       y: cam.clampY(cy - cam.height / 2),
@@ -2772,9 +3145,6 @@ export class GameScene extends Phaser.Scene {
     if (this.isPausedAfterBoss) {
       this.updateBlackPoint(dt);
       this.updateCamera(dt);
-      if (this.blackPoint >= 0.895) {
-        this.triggerCutscene2();
-      }
       return;
     }
 

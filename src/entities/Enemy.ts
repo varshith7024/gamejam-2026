@@ -1134,7 +1134,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
 
     if (this.championType === 'Boss') {
       this.isDead = true;
-      this.isDying = false;
+      this.isDying = true;
       this.isMoving = false;
       this.isActing = false;
       this.hasGroundStruck = false;
