@@ -290,6 +290,30 @@ export class WalkableArea {
   }
 
   /**
+   * Tests whether ring rIdx's obstacle currently blocks the line segment from start to target.
+   */
+  doesRingBlock(rIdx: number, startX: number, startY: number, targetX: number, targetY: number): boolean {
+    if (rIdx < 0 || rIdx >= this.navRings.length) return false;
+    const ring = this.navRings[rIdx];
+    if (ring.length === 0) return false;
+    let sumX = 0;
+    let sumY = 0;
+    for (const p of ring) {
+      sumX += p[0];
+      sumY += p[1];
+    }
+    const cx = sumX / ring.length;
+    const cy = sumY / ring.length;
+    let maxR = 0;
+    for (const p of ring) {
+      maxR = Math.max(maxR, Math.hypot(p[0] - cx, p[1] - cy));
+    }
+    const { distSq, t } = pointToSegmentDistSq(cx, cy, startX, startY, targetX, targetY);
+    // Obstacle must lie along the segment between start and target (not behind start or beyond target)
+    return t >= 0.05 && t <= 0.95 && distSq <= (maxR + 12) * (maxR + 12);
+  }
+
+  /**
    * Returns the immediate steering target for navigation from (startX, startY) towards (targetX, targetY).
    * If line of sight is clear, returns (targetX, targetY).
    * If line of sight is blocked by an obstacle, routes through navigation waypoints around the obstacle
@@ -318,46 +342,48 @@ export class WalkableArea {
       const ringIdx = Math.floor(currentWpt / 1000);
       const localIdx = currentWpt % 1000;
       if (ringIdx >= 0 && ringIdx < this.navRings.length) {
-        const ring = this.navRings[ringIdx];
-        const N = ring.length;
-        if (localIdx >= 0 && localIdx < N) {
-          // If entity can already see target with minimal padding, release navigation immediately!
-          if (this.hasLineOfSight(startX, startY, targetX, targetY, 4)) {
-            return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
-          }
+        // If entity can already see target with minimal padding, release navigation immediately!
+        if (this.hasLineOfSight(startX, startY, targetX, targetY, 4)) {
+          return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
+        }
 
-          if (!this.hasLineOfSight(startX, startY, ring[localIdx][0], ring[localIdx][1], 4)) {
-            // Can't see current waypoint: reset to re-acquire best entry
-            currentWpt = -1;
-            prevDir = 0;
-          } else {
-            const dToCurr = Math.hypot(ring[localIdx][0] - startX, ring[localIdx][1] - startY);
-            if (dToCurr < 14) {
-              // Arrived at current waypoint! Can we see target from this waypoint?
-              if (this.hasLineOfSight(ring[localIdx][0], ring[localIdx][1], targetX, targetY, 4)) {
-                return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
+        // If this ring NO LONGER BLOCKS the ray to target (enemy moved past it or behind it),
+        // release this ring immediately so it doesn't loop around the cleared prop!
+        if (!this.doesRingBlock(ringIdx, startX, startY, targetX, targetY)) {
+          currentWpt = -1;
+          prevDir = 0;
+        } else {
+          const ring = this.navRings[ringIdx];
+          const N = ring.length;
+          if (localIdx >= 0 && localIdx < N) {
+            if (!this.hasLineOfSight(startX, startY, ring[localIdx][0], ring[localIdx][1], 4)) {
+              currentWpt = -1;
+              prevDir = 0;
+            } else {
+              const dToCurr = Math.hypot(ring[localIdx][0] - startX, ring[localIdx][1] - startY);
+              if (dToCurr < 14) {
+                // Arrived at current waypoint! Can we see target from this waypoint?
+                if (this.hasLineOfSight(ring[localIdx][0], ring[localIdx][1], targetX, targetY, 4)) {
+                  return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
+                }
+                // Advance to next waypoint along the chosen direction
+                const nextLocal = (localIdx + prevDir + N) % N;
+                return { x: ring[nextLocal][0], y: ring[nextLocal][1], dir: prevDir, wptIdx: ringIdx * 1000 + nextLocal };
               }
-              // Advance to next waypoint along the chosen direction
-              const nextLocal = (localIdx + prevDir + N) % N;
-              return { x: ring[nextLocal][0], y: ring[nextLocal][1], dir: prevDir, wptIdx: ringIdx * 1000 + nextLocal };
+              // Keep moving towards current waypoint
+              return { x: ring[localIdx][0], y: ring[localIdx][1], dir: prevDir, wptIdx: currentWpt };
             }
-            // Keep moving towards current waypoint
-            return { x: ring[localIdx][0], y: ring[localIdx][1], dir: prevDir, wptIdx: currentWpt };
           }
         }
       }
     }
 
-    // 3. New obstacle encounter: find which ring obstructs the path to target
-    let chosenRingIdx = 0;
-    if (this.navRings.length > 1) {
-      let minRayT = Infinity;
-      let closestCentroidDist = Infinity;
-      let fallbackRingIdx = 0;
-
-      for (let r = 0; r < this.navRings.length; r++) {
+    // 3. New obstacle encounter: find which ring obstructs the path to target closest to start along the ray
+    let minRayT = Infinity;
+    let chosenRingIdx = -1;
+    for (let r = 0; r < this.navRings.length; r++) {
+      if (this.doesRingBlock(r, startX, startY, targetX, targetY)) {
         const ring = this.navRings[r];
-        if (ring.length === 0) continue;
         let sumX = 0;
         let sumY = 0;
         for (const pt of ring) {
@@ -366,32 +392,16 @@ export class WalkableArea {
         }
         const cx = sumX / ring.length;
         const cy = sumY / ring.length;
-
-        // Bounding radius of ring
-        let maxR = 0;
-        for (const pt of ring) {
-          maxR = Math.max(maxR, Math.hypot(pt[0] - cx, pt[1] - cy));
-        }
-
-        const { distSq, t } = pointToSegmentDistSq(cx, cy, startX, startY, targetX, targetY);
-        const dCentroid = Math.hypot(cx - startX, cy - startY);
-        if (dCentroid < closestCentroidDist) {
-          closestCentroidDist = dCentroid;
-          fallbackRingIdx = r;
-        }
-
-        // Check if ray passes through or very close to this ring
-        if (t >= 0 && t <= 1 && distSq <= (maxR + 25) * (maxR + 25)) {
-          if (t < minRayT) {
-            minRayT = t;
-            chosenRingIdx = r;
-          }
+        const { t } = pointToSegmentDistSq(cx, cy, startX, startY, targetX, targetY);
+        if (t < minRayT) {
+          minRayT = t;
+          chosenRingIdx = r;
         }
       }
+    }
 
-      if (minRayT === Infinity) {
-        chosenRingIdx = fallbackRingIdx;
-      }
+    if (chosenRingIdx === -1) {
+      return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
     }
 
     const wpts = this.navRings[chosenRingIdx];
@@ -400,114 +410,43 @@ export class WalkableArea {
       return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
     }
 
-    // Find exits on chosen ring (waypoints that have clear line of sight to target)
-    const exits: { idx: number; dist: number }[] = [];
-    for (let j = 0; j < N; j++) {
-      if (this.hasLineOfSight(wpts[j][0], wpts[j][1], targetX, targetY, 4)) {
-        exits.push({ idx: j, dist: Math.hypot(targetX - wpts[j][0], targetY - wpts[j][1]) });
-      }
-    }
-    if (exits.length === 0) {
-      let closestJ = 0;
-      let minD = Infinity;
-      for (let j = 0; j < N; j++) {
-        const d = Math.hypot(targetX - wpts[j][0], targetY - wpts[j][1]);
-        if (d < minD) {
-          minD = d;
-          closestJ = j;
-        }
-      }
-      exits.push({ idx: closestJ, dist: minD });
-    }
-
-    // Find entries on chosen ring (waypoints visible from entity position)
-    const entries: { idx: number; dist: number }[] = [];
+    // Pick entry waypoint visible from entity position, or closest
+    let bestEntry = -1;
+    let minD = Infinity;
     for (let i = 0; i < N; i++) {
       if (this.hasLineOfSight(startX, startY, wpts[i][0], wpts[i][1], 4)) {
-        entries.push({ idx: i, dist: Math.hypot(wpts[i][0] - startX, wpts[i][1] - startY) });
+        const d = Math.hypot(wpts[i][0] - startX, wpts[i][1] - startY);
+        if (d < minD) {
+          minD = d;
+          bestEntry = i;
+        }
       }
     }
-    if (entries.length === 0) {
-      let closestI = 0;
-      let minD = Infinity;
+    if (bestEntry === -1) {
       for (let i = 0; i < N; i++) {
         const d = Math.hypot(wpts[i][0] - startX, wpts[i][1] - startY);
         if (d < minD) {
           minD = d;
-          closestI = i;
-        }
-      }
-      entries.push({ idx: closestI, dist: minD });
-    }
-
-    const edgeDists: number[] = [];
-    for (let i = 0; i < N; i++) {
-      const a = wpts[i];
-      const b = wpts[(i + 1) % N];
-      edgeDists.push(Math.hypot(b[0] - a[0], b[1] - a[1]));
-    }
-    const ringDist = (i: number, j: number, direction: number): number => {
-      if (i === j) return 0;
-      let d = 0;
-      let curr = i;
-      if (direction === 1) {
-        while (curr !== j) {
-          d += edgeDists[curr];
-          curr = (curr + 1) % N;
-        }
-      } else {
-        while (curr !== j) {
-          curr = (curr - 1 + N) % N;
-          d += edgeDists[curr];
-        }
-      }
-      return d;
-    };
-
-    let bestCost = Infinity;
-    let bestEntry = entries[0].idx;
-    let bestExit = exits[0].idx;
-    let bestDir = 1;
-
-    for (const e of entries) {
-      for (const ex of exits) {
-        if (e.idx === ex.idx) {
-          const cost = e.dist + ex.dist;
-          if (cost < bestCost) {
-            bestCost = cost;
-            bestEntry = e.idx;
-            bestExit = ex.idx;
-            bestDir = 0;
-          }
-        } else {
-          for (const dDir of [1, -1]) {
-            const dRing = ringDist(e.idx, ex.idx, dDir);
-            const cost = e.dist + dRing + ex.dist;
-            if (cost < bestCost) {
-              bestCost = cost;
-              bestEntry = e.idx;
-              bestExit = ex.idx;
-              bestDir = dDir;
-            }
-          }
+          bestEntry = i;
         }
       }
     }
+
+    // Pick direction (+1 or -1) that moves closer to target
+    const dPlus = Math.hypot(wpts[(bestEntry + 1) % N][0] - targetX, wpts[(bestEntry + 1) % N][1] - targetY);
+    const dMinus = Math.hypot(wpts[(bestEntry - 1 + N) % N][0] - targetX, wpts[(bestEntry - 1 + N) % N][1] - targetY);
+    const bestDir = dPlus <= dMinus ? 1 : -1;
 
     const distToEntry = Math.hypot(wpts[bestEntry][0] - startX, wpts[bestEntry][1] - startY);
     if (distToEntry < 14) {
-      if (bestEntry === bestExit || this.hasLineOfSight(wpts[bestEntry][0], wpts[bestEntry][1], targetX, targetY, 4)) {
-        return { x: targetX, y: targetY, dir: 0, wptIdx: -1 };
-      }
-      const chosenDir = bestDir !== 0 ? bestDir : 1;
-      const nextWpt = (bestEntry + chosenDir + N) % N;
-      return { x: wpts[nextWpt][0], y: wpts[nextWpt][1], dir: chosenDir, wptIdx: chosenRingIdx * 1000 + nextWpt };
+      const nextWpt = (bestEntry + bestDir + N) % N;
+      return { x: wpts[nextWpt][0], y: wpts[nextWpt][1], dir: bestDir, wptIdx: chosenRingIdx * 1000 + nextWpt };
     }
 
     return {
       x: wpts[bestEntry][0],
       y: wpts[bestEntry][1],
-      dir: bestDir !== 0 ? bestDir : 1,
+      dir: bestDir,
       wptIdx: chosenRingIdx * 1000 + bestEntry,
     };
   }
