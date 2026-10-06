@@ -403,6 +403,26 @@ export class GameScene extends Phaser.Scene {
       this.startWave(1);
     }
 
+    // Boss ground strike impact handler (Level 3 Abyss)
+    this.events.on('boss-ground-slam', (slamX: number, slamY: number) => {
+      this.cameras.main.shake(220, 0.011);
+      const ring = this.add.circle(slamX, slamY, 16, 0xffffff, 0.45);
+      ring.setDepth(DEPTH.groundDecal + 50);
+      ring.setStrokeStyle(3, 0xffffff, 0.85);
+      this.tweens.add({
+        targets: ring,
+        radius: 95,
+        alpha: 0,
+        duration: 400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy(),
+      });
+    });
+
+    this.events.once('shutdown', () => {
+      this.events.off('boss-ground-slam');
+    });
+
     // Debug mode (?debug in URL)
     if (new URLSearchParams(window.location.search).has('debug')) {
       this.debugOn = true;
@@ -1259,6 +1279,10 @@ export class GameScene extends Phaser.Scene {
     this.health = Math.max(0, this.health - amount);
     this.timeSinceLastDamage = 0;
     this.drawHealthBar();
+
+    if (this.level.id === 'level3') {
+      this.cameras.main.shake(180, 0.009);
+    }
 
     if (this.health <= 0) {
       this.die();

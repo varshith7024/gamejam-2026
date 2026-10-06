@@ -154,7 +154,7 @@ export class Level1Environment {
     }
 
     // Occluders: pieces of the master drawn again ABOVE the player while the player is behind them.
-    const list = this.scene.cache.json.get(manifestKey(this.level)) as OccluderEntry[];
+    const list = (this.scene.cache.json.get(manifestKey(this.level)) ?? []) as OccluderEntry[];
     for (const o of list) {
       const occImg = this.scene.add
         .image(o.x, o.y, o.key)

@@ -15,6 +15,7 @@ export interface PropDef {
 export type FogBank = readonly [string, number, number, number, number, number, number];
 
 export interface AtmosphereConfig {
+  disabled?: boolean;
   fogBanks: readonly FogBank[];
   motes: readonly (readonly [number, number, number])[]; // x, y, scale
   spirits: readonly (readonly [number, number, number])[]; // x, y, scale

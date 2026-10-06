@@ -11,6 +11,7 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "assets:level1": "python3 tools/process_level1_assets.py",
     "assets:level2": "python3 tools/process_level2_assets.py",
+    "assets:level3": "python3 tools/process_level3_assets.py",
     "zip": "npm run build && cd dist && bestzip ../negative-space-web.zip *"
   },
   "dependencies": {

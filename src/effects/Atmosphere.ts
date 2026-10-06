@@ -29,6 +29,7 @@ export class Atmosphere {
   }
 
   create(options: { vignette?: boolean } = {}) {
+    if (this.level.atmosphere?.disabled) return;
     this.makeParticleTextures();
     this.createFogBanks();
     this.createSheetSprites();
