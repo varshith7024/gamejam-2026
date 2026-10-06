@@ -1073,7 +1073,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     if (!this.shadow) return;
     if (this.championType === 'Boss') {
       this.shadow.setPosition(this.x, this.y + 2);
-      const isVisible = this.visible && !this.isDead;
+      const isVisible = this.visible;
       this.shadow.setVisible(isVisible);
       if (isVisible) {
         const pulse = this.bossIsEnraged ? 1.05 + Math.sin(Date.now() * 0.006) * 0.08 : 1.0;
@@ -1095,7 +1095,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
   public override setVisible(value: boolean): this {
     super.setVisible(value);
     if (this.shadow) {
-      this.shadow.setVisible(value && !this.isDead && this.enemy3State !== 'hidden');
+      this.shadow.setVisible(value && (this.championType === 'Boss' || !this.isDead) && this.enemy3State !== 'hidden');
     }
     return this;
   }
@@ -1131,6 +1131,20 @@ export class Enemy extends Phaser.GameObjects.Sprite {
       this.bossTelegraphCircle.destroy();
       this.bossTelegraphCircle = undefined;
     }
+
+    if (this.championType === 'Boss') {
+      this.isDead = true;
+      this.isDying = false;
+      this.isMoving = false;
+      this.isActing = false;
+      this.hasGroundStruck = false;
+      this.isStumbling = false;
+      this.anims.stop();
+      this.setDepth(this.getFootY());
+      this.clearTint();
+      return;
+    }
+
     this.isDead = true;
     this.isDying = true;
     this.isMoving = false;
@@ -1157,29 +1171,6 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.scene.time.delayedCall(120, () => {
       this.clearTint();
     });
-
-    if (this.championType === 'Boss') {
-      if (this.shadow) {
-        this.scene.tweens.add({
-          targets: this.shadow,
-          alpha: 0,
-          duration: 1200,
-          ease: 'Quad.easeOut',
-        });
-      }
-      this.currentAnimKey = 'idle';
-      this.playChampionAnim('idle', this.currentDir);
-      this.scene.tweens.add({
-        targets: this,
-        alpha: 0,
-        duration: 2500,
-        ease: 'Quad.easeOut',
-        onComplete: () => {
-          this.destroy();
-        },
-      });
-      return;
-    }
 
     if (this.championType === 'Enemy3') {
       if (this.shadow) {

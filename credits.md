@@ -23,9 +23,13 @@ https://freesound.org/people/Porphyr/sounds/188815/
 https://freesound.org/people/DAN2008/sounds/832382/
 https://www.youtube.com/watch?v=n451uigPWdk
 
+AI USAGE:
+Code was written by Antigravity + Gemini and Claude
+Maps, some ability icons were generated with AI
+
 todo:
-level transitions
 cutscenes
-level 3 enemies
 show points
 remove dev stuff
+
+i added the first cutscene - look at public/assets/cutscene1.html - make this play after the user presses play and after this cutscene is done, go to level1

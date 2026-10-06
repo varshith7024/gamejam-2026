@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { CreditsScene } from './scenes/CreditsScene';
+import { Cutscene1Scene } from './scenes/Cutscene1Scene';
 import { GameScene } from './scenes/GameScene';
 import { Level1Scene } from './scenes/Level1Scene';
 import { Level2Scene } from './scenes/Level2Scene';
@@ -23,5 +24,5 @@ import { GameOverScene } from './scenes/GameOverScene';
     width: 1280,
     height: 720,
   },
-  scene: [BootScene, MainMenuScene, CreditsScene, GameScene, Level1Scene, Level2Scene, Level3Scene, GameOverScene],
+  scene: [BootScene, MainMenuScene, CreditsScene, Cutscene1Scene, GameScene, Level1Scene, Level2Scene, Level3Scene, GameOverScene],
 });

@@ -190,6 +190,14 @@ export class GameScene extends Phaser.Scene {
   private bossHpText?: Phaser.GameObjects.Text;
   private bossTitleText?: Phaser.GameObjects.Text;
 
+  // Carried Light Level Across Scenes
+  private carriedLightLevel?: number;
+
+  // Level 3 Boss Climax
+  private bossDefeatedHandled = false;
+  private isPausedAfterBoss = false;
+  private bossMinionTimers: Phaser.Time.TimerEvent[] = [];
+
   // Controls Tutorial Popup (Level 1)
   private controlsPopupContainer?: Phaser.GameObjects.Container;
   private isControlsPopupOpen = false;
@@ -285,7 +293,8 @@ export class GameScene extends Phaser.Scene {
     super(key);
   }
 
-  init() {
+  init(data?: { carriedLightLevel?: number }) {
+    this.carriedLightLevel = data?.carriedLightLevel;
     this.resetSceneState();
   }
 
@@ -310,6 +319,10 @@ export class GameScene extends Phaser.Scene {
       this.bossHealthContainer = undefined;
     }
     this.bossEnemy = undefined;
+    this.bossDefeatedHandled = false;
+    this.isPausedAfterBoss = false;
+    this.bossMinionTimers.forEach((t) => t.remove());
+    this.bossMinionTimers = [];
     this.bossHpBgGfx = undefined;
     this.bossHpFillGfx = undefined;
     this.bossHpText = undefined;
@@ -354,6 +367,12 @@ export class GameScene extends Phaser.Scene {
     this.lastShockwaveHitTime = 0;
   }
 
+  private getMaxLightLevel(): number {
+    if (this.level.id === 'level3') return 0.90;
+    if (this.level.id === 'level2') return 0.50;
+    return 0.35;
+  }
+
   create() {
     this.resetSceneState();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -361,12 +380,29 @@ export class GameScene extends Phaser.Scene {
       this.resetSceneState();
     });
 
+    // Ensure speech synthesis from cutscene is immediately halted
+    try {
+      window.speechSynthesis.cancel();
+    } catch {}
+
+    // Resume sound context immediately
+    const snd = this.sound as any;
+    if (snd.context && snd.context.state === 'suspended') {
+      snd.context.resume();
+    }
+    snd.locked = false;
+
     this.startBattleMusic();
 
     this.cameras.main.setBackgroundColor('#000000');
+    this.cameras.main.fadeIn(800, 0, 0, 0);
     this.input.mouse?.disableContextMenu();
 
-    const initialLight = this.level.initialLightLevel ?? (this.level.id === 'level3' ? 0.20 : this.level.id === 'level2' ? -0.10 : -0.50);
+    const maxLight = this.getMaxLightLevel();
+    const rawInitial = this.carriedLightLevel !== undefined
+      ? this.carriedLightLevel
+      : (this.level.initialLightLevel ?? (this.level.id === 'level3' ? 0.20 : this.level.id === 'level2' ? -0.10 : -0.50));
+    const initialLight = Phaser.Math.Clamp(rawInitial, -1.00, maxLight);
     this.blackPoint = initialLight;
     this.targetBlackPoint = initialLight;
 
@@ -526,13 +562,15 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      this.battleMusic = this.sound.add('battleMusic', { loop: true, volume: 0.40 });
+      this.battleMusic = this.sound.add('battleMusic', { loop: true, volume: 0.50 });
       this.battleMusic.play();
     };
 
-    if (this.sound.locked) {
-      this.sound.once(Phaser.Sound.Events.UNLOCKED, playMusic);
+    const snd = this.sound as any;
+    if (snd.context && snd.context.state === 'suspended') {
+      snd.context.resume().then(playMusic);
     } else {
+      snd.locked = false;
       playMusic();
     }
   }
@@ -625,13 +663,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBlackPoint(dt: number) {
-    const baseLight = this.level.initialLightLevel ?? -0.50;
     const hasAliveEnemies = this.enemies.some((e) => !e.isDead);
-    if (hasAliveEnemies) {
-      // Decrease light level by 1% (0.01) per second when enemies are present
-      this.targetBlackPoint = Math.max(baseLight, this.targetBlackPoint - 0.01 * dt);
+    if (hasAliveEnemies && !this.isDead && !this.bossDefeatedHandled) {
+      // Decrease light level by 2% (0.02) per second when enemies are present
+      this.targetBlackPoint = Math.max(-1.00, this.targetBlackPoint - 0.02 * dt);
     }
-    this.targetBlackPoint = Phaser.Math.Clamp(this.targetBlackPoint, -0.50, 0.35);
+    this.targetBlackPoint = Phaser.Math.Clamp(this.targetBlackPoint, -1.00, this.getMaxLightLevel());
 
     // Smoothly interpolate towards targetBlackPoint (frame-rate independent smooth transition)
     const prevBlackPoint = this.blackPoint;
@@ -644,6 +681,11 @@ export class GameScene extends Phaser.Scene {
 
     if (Math.abs(this.blackPoint - prevBlackPoint) > 0.00005) {
       this.applyBlackPoint();
+    }
+
+    // Darkness death: if light level reaches -100%, darkness consumes the player
+    if (this.blackPoint <= -0.999 && !this.isDead) {
+      this.die();
     }
   }
 
@@ -1277,7 +1319,7 @@ export class GameScene extends Phaser.Scene {
     btnGfx.lineStyle(1.5, 0xffffff, 1.0);
     btnGfx.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 6);
 
-    const btnText = this.add.text(0, 0, '✦   UNDERSTOOD   ✦', {
+    const btnText = this.add.text(0, 0, '✦  Press ENTER  ✦', {
       fontFamily: '"Cinzel", "Georgia", serif',
       fontSize: '16px',
       fontStyle: 'bold',
@@ -1885,17 +1927,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (waveNum === 1) {
-      if (this.level.id === 'level3') {
-        this.sound.play('waveStart', { volume: 0.70 });
-        this.startWave1();
-      } else {
-        // Delay wave 1 announcement slightly so "The Veil" title card displays first
-        this.time.delayedCall(3000, () => {
-          this.sound.play('waveStart', { volume: 0.70 });
-          this.announceWave(`WAVE ${waveRoman}`);
-        });
-        this.startWave1();
+      this.sound.play('waveStart', { volume: 0.70 });
+      if (this.level.id !== 'level3') {
+        this.announceWave(`WAVE ${waveRoman}`);
       }
+      this.startWave1();
     } else {
       this.sound.play('waveStart', { volume: 0.70 });
       this.announceWave(`WAVE ${waveRoman}`);
@@ -1932,6 +1968,56 @@ export class GameScene extends Phaser.Scene {
           });
         }
       });
+
+      // Minion recurring spawns during boss encounter with active caps:
+      // Yis count max 5, Zed count max 3, Enemy3 count max 2 at all times.
+      // 1. Every 7 seconds: spawn Yis up to cap of 5
+      const tYi = this.time.addEvent({
+        delay: 7000,
+        loop: true,
+        callback: () => {
+          if (this.isDead || (this.bossEnemy && this.bossEnemy.isDead) || this.bossDefeatedHandled) return;
+          const aliveYis = this.enemies.filter((e) => e.championType === 'Yi' && !e.isDead).length;
+          const toSpawn = Math.min(5, 5 - aliveYis);
+          if (toSpawn <= 0) return;
+          const baseAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          for (let i = 0; i < toSpawn; i++) {
+            const angle = baseAngle + (i * (Math.PI * 2)) / toSpawn;
+            const offset = ((i % 2) * 2 - 1) * 30;
+            this.spawnEnemyAtAngle('Yi', angle, offset);
+          }
+        },
+      });
+      this.bossMinionTimers.push(tYi);
+
+      // 2. Every 5 seconds: spawn 1 Zed up to cap of 3
+      const tZed = this.time.addEvent({
+        delay: 5000,
+        loop: true,
+        callback: () => {
+          if (this.isDead || (this.bossEnemy && this.bossEnemy.isDead) || this.bossDefeatedHandled) return;
+          const aliveZeds = this.enemies.filter((e) => e.championType === 'Zed' && !e.isDead).length;
+          if (aliveZeds >= 3) return;
+          const zedAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          this.spawnEnemyAtAngle('Zed', zedAngle, Phaser.Math.Between(-30, 30));
+        },
+      });
+      this.bossMinionTimers.push(tZed);
+
+      // 3. Every 9 seconds: spawn 1 Enemy3 up to cap of 2
+      const tEnemy3 = this.time.addEvent({
+        delay: 9000,
+        loop: true,
+        callback: () => {
+          if (this.isDead || (this.bossEnemy && this.bossEnemy.isDead) || this.bossDefeatedHandled) return;
+          const aliveEnemy3 = this.enemies.filter((e) => e.championType === 'Enemy3' && !e.isDead).length;
+          if (aliveEnemy3 >= 2) return;
+          const e3Angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+          this.spawnEnemyAtAngle('Enemy3', e3Angle, Phaser.Math.Between(-25, 25));
+        },
+      });
+      this.bossMinionTimers.push(tEnemy3);
+
       return;
     }
 
@@ -2022,7 +2108,7 @@ export class GameScene extends Phaser.Scene {
 
   private onEnemyDefeated(enemy: Enemy, source: 'normal' | 'X' | 'U' = 'normal') {
     // Points calculation: enemy's health * 100 * (1 + current light level as decimal percentage)
-    const pointsEarned = Math.round(enemy.maxHp * 100 * (1 + this.blackPoint));
+    const pointsEarned = Math.max(0, Math.round(enemy.maxHp * 100 * (1 + this.blackPoint)));
     this.score += pointsEarned;
     this.updateScoreUI();
     this.showKillPointPopup(pointsEarned);
@@ -2038,14 +2124,15 @@ export class GameScene extends Phaser.Scene {
     // Spawn kill effect: motes for Yi, spirits for Zed, purple spirit for Enemy3
     this.spawnEnemyDefeatEffect(enemy);
 
-    // Brighten the background and level props: increase target light level by 5% (0.05) per enemy defeated, capped at 35% (0.35).
+    // Brighten the background and level props: increase target light level by 5% (0.05) per enemy defeated, capped by level max.
     // The smooth, continuous transition is processed frame-by-frame in updateBlackPoint().
-    this.targetBlackPoint = Math.min(0.35, this.targetBlackPoint + 0.05);
+    this.targetBlackPoint = Math.min(this.getMaxLightLevel(), this.targetBlackPoint + 0.05);
 
     this.checkWaveProgress();
   }
 
   private spawnEnemyDefeatEffect(enemy: Enemy) {
+    if (enemy.championType === 'Boss') return;
     const x = enemy.x;
     const y = enemy.y;
     const isEnemy3 = enemy.championType === 'Enemy3';
@@ -2292,39 +2379,9 @@ export class GameScene extends Phaser.Scene {
 
   private checkWaveProgress() {
     if (this.level.id === 'level3') {
-      const activeInGroup = this.waveGroupEnemies.filter((e) => !e.isDead);
-      if (this.wavePendingSpawns === 0 && activeInGroup.length === 0 && this.waveGroupEnemies.length > 0) {
-        if (this.wavePhase === 0) {
-          this.wavePhase = 1;
-          if (this.bossHealthContainer) {
-            this.tweens.add({
-              targets: this.bossHealthContainer,
-              alpha: 0,
-              duration: 1200,
-              ease: 'Quad.easeOut',
-            });
-          }
-          if (this.cornerWaveText) {
-            this.cornerWaveText.setText('VICTORY');
-          }
-          if (this.heartbeatSound && this.heartbeatSound.isPlaying) {
-            this.heartbeatSound.stop();
-          }
-          if (this.battleMusic && this.battleMusic.isPlaying) {
-            this.tweens.add({
-              targets: this.battleMusic,
-              volume: 0,
-              duration: 1000,
-              onComplete: () => {
-                this.battleMusic?.stop();
-                this.battleMusic?.destroy();
-                this.battleMusic = undefined;
-              },
-            });
-          }
-          this.sound.play('victory', { volume: 0.80 });
-          this.announceWave('VICTORY');
-        }
+      if (this.bossEnemy && this.bossEnemy.isDead && !this.bossDefeatedHandled) {
+        this.bossDefeatedHandled = true;
+        this.handleBossDefeat();
       }
       return;
     }
@@ -2442,11 +2499,70 @@ export class GameScene extends Phaser.Scene {
         this.announceWave('VICTORY');
         if (this.level.nextScene) {
           const next = this.level.nextScene;
-          this.time.delayedCall(4500, () => this.scene.start(next));
+          this.time.delayedCall(2000, () => {
+            this.cameras.main.fade(800, 0, 0, 0);
+            this.time.delayedCall(800, () => {
+              this.scene.start(next, { carriedLightLevel: this.blackPoint });
+            });
+          });
         }
       }
       return;
     }
+  }
+
+  private handleBossDefeat() {
+    this.bossMinionTimers.forEach((t) => t.remove());
+    this.bossMinionTimers = [];
+
+    // Defeat remaining minions so arena is clear
+    for (const enemy of this.enemies) {
+      if (enemy !== this.bossEnemy && !enemy.isDead) {
+        enemy.die(this.player.x, this.player.y);
+      }
+    }
+
+    if (this.bossHealthContainer) {
+      this.tweens.add({
+        targets: this.bossHealthContainer,
+        alpha: 0,
+        duration: 1200,
+        ease: 'Quad.easeOut',
+      });
+    }
+
+    if (this.cornerWaveText) {
+      this.cornerWaveText.setText('');
+    }
+
+    if (this.heartbeatSound && this.heartbeatSound.isPlaying) {
+      this.heartbeatSound.stop();
+    }
+    if (this.battleMusic && this.battleMusic.isPlaying) {
+      this.tweens.add({
+        targets: this.battleMusic,
+        volume: 0,
+        duration: 1200,
+        onComplete: () => {
+          this.battleMusic?.stop();
+          this.battleMusic?.destroy();
+          this.battleMusic = undefined;
+        },
+      });
+    }
+
+    // Gradually push light level to 90%
+    this.targetBlackPoint = 0.90;
+
+    // Pause player action and pause scene for now
+    this.isPausedAfterBoss = true;
+    this.currentAction = 'idle';
+    this.actionVelocity.set(0, 0);
+    this.playDirectional('Idle', this.currentAimDir, false);
+
+    this.time.delayedCall(2000, () => {
+      this.scene.pause();
+    });
   }
 
   private setupInput() {
@@ -2606,6 +2722,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.isDead) {
+      this.updateCamera(dt);
+      return;
+    }
+
+    if (this.isPausedAfterBoss) {
+      this.updateBlackPoint(dt);
       this.updateCamera(dt);
       return;
     }
@@ -3287,12 +3409,12 @@ export class GameScene extends Phaser.Scene {
             this.lastShockwaveHitTime = this.time.now;
             this.sound.play('updateShockwaves', { volume: 0.60 });
           }
-          // Every circle deals 1.25 damage to monsters as the shockwave reaches them
+          // Every circle deals 1.75 damage to monsters as the shockwave reaches them
           const killed = enemy.takeDamage(
             ring.centerX,
             ring.centerY,
             this.env.area,
-            1.25,
+            1.75,
             34,
             0.5,
           );
@@ -3530,8 +3652,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Darken environment
-    this.targetBlackPoint = -0.50;
-    this.blackPoint = -0.50;
+    this.targetBlackPoint = -1.00;
+    this.blackPoint = -1.00;
     this.applyBlackPoint();
 
     // Transition directly to the medieval fantasy GameOver screen (with options)
