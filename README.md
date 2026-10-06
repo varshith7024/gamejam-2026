@@ -1,6 +1,6 @@
 # Negative Space
 
-Play it here: **ITCH_IO_LINK_HERE**
+Play it here: **https://bigblast-66.itch.io/negative-space**
 
 ## Setup and run
 ```
@@ -12,7 +12,7 @@ npm run zip      # build + negative-space-web.zip for itch.io upload
 Requires Node.js 20 LTS and Git.
 
 ## Controls
-- (fill in as controls are finalised)
+- Its in CONTROLS.MD 
 
 ## Team SuperThick
 - Varshith - indieconnect.in/dev/varshithanthagiri
